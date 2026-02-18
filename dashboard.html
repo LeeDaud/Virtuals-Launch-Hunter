@@ -1,0 +1,2145 @@
+﻿<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#0b1426" />
+  <meta name="vpulse-api-base" content="" />
+  <link rel="icon" type="image/svg+xml" href="./favicon-vpulse.svg" />
+  <title>V-Pulse 盘面雷达 v3.1.0</title>
+  <style>
+    :root {
+      --bg: #070b14;
+      --bg-elev-1: #0a1020;
+      --card: #0b1426;
+      --card-2: #0d1830;
+      --border: rgba(255, 255, 255, 0.06);
+      --divider: rgba(255, 255, 255, 0.04);
+
+      --text: rgba(255, 255, 255, 0.92);
+      --text-2: rgba(255, 255, 255, 0.7);
+      --text-3: rgba(255, 255, 255, 0.48);
+
+      --primary: #4cc9f0;
+      --success: #3ee6a8;
+      --warn: #f2c94c;
+      --danger: #ff6b6b;
+
+      --r-card: 12px;
+      --r-ctl: 10px;
+
+      --shadow-1: 0 8px 24px rgba(0, 0, 0, 0.35);
+      --shadow-2: 0 12px 36px rgba(0, 0, 0, 0.45);
+      --t-fast: 160ms ease-out;
+
+      --mono: "JetBrains Mono", "Cascadia Mono", "SFMono-Regular", "Consolas", monospace;
+      --sans: "MiSans", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei UI", "Noto Sans CJK SC", "Source Han Sans SC", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      overflow-y: scroll;
+      scrollbar-gutter: stable both-edges;
+    }
+
+    body {
+      margin: 0;
+      font-family: var(--sans);
+      color: var(--text);
+      background:
+        radial-gradient(1400px 600px at 0% -20%, rgba(76, 201, 240, 0.08) 0%, transparent 55%),
+        radial-gradient(900px 500px at 100% 0%, rgba(62, 230, 168, 0.05) 0%, transparent 58%),
+        linear-gradient(155deg, var(--bg), var(--bg-elev-1));
+      min-height: 100vh;
+      padding: 22px;
+      overflow-x: hidden;
+      line-height: 1.45;
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
+    }
+
+    .shell {
+      width: min(100%, 1400px);
+      max-width: 1400px;
+      margin: 0 auto;
+      display: grid;
+      gap: 20px;
+      min-width: 0;
+    }
+
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      gap: 12px;
+      flex-wrap: wrap;
+      position: sticky;
+      top: 10px;
+      z-index: 12;
+      background: rgba(13, 24, 48, 0.74);
+      border: 1px solid var(--border);
+      border-radius: var(--r-card);
+      box-shadow: var(--shadow-1);
+      backdrop-filter: blur(10px);
+      padding: 16px 18px;
+    }
+
+    .title {
+      font-size: 30px;
+      letter-spacing: 0.2px;
+      font-weight: 680;
+      line-height: 1.2;
+    }
+
+    .subtitle {
+      color: var(--text-2);
+      font-size: 13px;
+      margin-top: 4px;
+      letter-spacing: 0.1px;
+    }
+
+    .controls {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+      min-width: 0;
+      max-width: 100%;
+    }
+
+    .minute-range-controls {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-bottom: 14px;
+    }
+
+    .pill,
+    .pill-input,
+    .field input,
+    select.pill {
+      height: 36px;
+      border-radius: var(--r-ctl);
+      border: 1px solid var(--border);
+      background: var(--card-2);
+      color: var(--text);
+      font-family: var(--sans);
+      font-size: 12px;
+      transition:
+        border-color var(--t-fast),
+        box-shadow var(--t-fast),
+        background-color var(--t-fast),
+        transform var(--t-fast),
+        color var(--t-fast);
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0 14px;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .pill:hover {
+      border-color: rgba(255, 255, 255, 0.13);
+      background: rgba(18, 33, 63, 0.95);
+    }
+
+    .pill[disabled] {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .pill.is-active {
+      border-color: rgba(76, 201, 240, 0.55);
+      box-shadow: inset 0 0 0 1px rgba(76, 201, 240, 0.25);
+      background: rgba(76, 201, 240, 0.14);
+      color: #e2f8ff;
+    }
+
+    .pill-input {
+      min-width: 170px;
+      padding: 0 12px;
+    }
+
+    .pill-input[type="datetime-local"] {
+      color-scheme: dark;
+    }
+
+    .pill-input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='5' width='18' height='16' rx='2'/%3E%3Cline x1='16' y1='3' x2='16' y2='7'/%3E%3Cline x1='8' y1='3' x2='8' y2='7'/%3E%3Cline x1='3' y1='11' x2='21' y2='11'/%3E%3C/svg%3E");
+      background-size: 14px 14px;
+      background-position: center;
+      background-repeat: no-repeat;
+      filter: brightness(0) invert(1) !important;
+      opacity: 1;
+      cursor: pointer;
+    }
+
+    .pill-input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
+      opacity: 1;
+    }
+
+    .minute-range-controls .pill-input {
+      min-width: 165px;
+    }
+
+    .pill:focus-visible,
+    .pill-input:focus-visible,
+    .field input:focus-visible {
+      outline: none;
+      border-color: rgba(76, 201, 240, 0.65);
+      box-shadow: 0 0 0 3px rgba(76, 201, 240, 0.24);
+    }
+
+    select.pill {
+      padding: 0 28px 0 12px;
+    }
+
+    .grid-4 {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 16px;
+    }
+
+    .grid-5 {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 16px;
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--r-card);
+      box-shadow: var(--shadow-1);
+      padding: 22px;
+      animation: fadeUp 260ms ease both;
+      min-width: 0;
+      overflow: hidden;
+    }
+
+    .kpi-title {
+      color: var(--text-3);
+      font-size: 11px;
+      letter-spacing: 0.6px;
+      margin-bottom: 10px;
+      font-weight: 600;
+    }
+
+    .kpi-value {
+      font-family: var(--mono);
+      font-size: 26px;
+      font-weight: 700;
+      line-height: 1.2;
+      color: var(--text);
+    }
+
+    .status {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      border-radius: 999px;
+      padding: 4px 12px;
+      font-family: var(--sans);
+      border: 1px solid transparent;
+    }
+
+    .ok {
+      color: #d8fff0;
+      border-color: rgba(62, 230, 168, 0.35);
+      background: rgba(62, 230, 168, 0.12);
+    }
+
+    .bad {
+      color: #ffe0e0;
+      border-color: rgba(255, 107, 107, 0.36);
+      background: rgba(255, 107, 107, 0.12);
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1.25fr 1fr;
+      gap: 16px;
+    }
+
+    .section-title {
+      font-size: 14px;
+      margin-bottom: 14px;
+      color: var(--text-2);
+      letter-spacing: 0.3px;
+      font-weight: 600;
+    }
+
+    .ui-bar {
+      display: flex;
+      gap: 14px;
+      align-items: center;
+      flex-wrap: wrap;
+      padding-top: 14px;
+      padding-bottom: 14px;
+    }
+
+    .batch-tuning-row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .chart-wrap {
+      background: var(--card-2);
+      border: 1px solid var(--border);
+      border-radius: var(--r-ctl);
+      padding: 10px;
+      overflow-x: auto;
+      overflow-y: hidden;
+    }
+
+    canvas {
+      width: 100%;
+      height: 320px;
+      display: block;
+    }
+
+    .table-wrap {
+      overflow: auto;
+      max-height: 360px;
+      border: 1px solid var(--border);
+      border-radius: var(--r-ctl);
+      background: var(--card-2);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
+    }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+
+    .field {
+      display: grid;
+      gap: 7px;
+    }
+
+    .field label {
+      font-size: 12px;
+      color: var(--text-2);
+      font-family: var(--sans);
+    }
+
+    .field input {
+      width: 100%;
+      padding: 0 10px;
+    }
+
+    .form-actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 14px;
+      flex-wrap: wrap;
+    }
+
+    .wallet-config-bar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 12px;
+    }
+
+    .wallet-config-list {
+      display: grid;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .wallet-chip {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      padding: 8px 10px;
+      border: 1px solid var(--divider);
+      border-radius: var(--r-ctl);
+      background: var(--card-2);
+      font-family: var(--mono);
+      font-size: 12px;
+    }
+
+    .wallet-chip .pill {
+      height: 30px;
+      padding: 0 10px;
+    }
+
+    .hint {
+      color: var(--text-2);
+      font-size: 12px;
+      font-family: var(--sans);
+      overflow-wrap: anywhere;
+    }
+
+    #refreshMessage {
+      display: inline-block;
+      max-width: min(54vw, 680px);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      vertical-align: bottom;
+    }
+
+    .copy-btn {
+      margin-left: 6px;
+      border: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.02);
+      color: var(--text-2);
+      border-radius: 8px;
+      padding: 2px 8px;
+      font-size: 11px;
+      line-height: 1.4;
+      cursor: pointer;
+      font-family: var(--sans);
+      font-weight: 520;
+      transition:
+        border-color var(--t-fast),
+        color var(--t-fast),
+        background-color var(--t-fast);
+    }
+
+    .copy-btn:hover {
+      border-color: rgba(76, 201, 240, 0.45);
+      background: rgba(76, 201, 240, 0.12);
+      color: #dff7ff;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+      min-width: 800px;
+      font-family: var(--sans);
+      font-size: 12px;
+      color: var(--text);
+    }
+
+    th,
+    td {
+      height: 44px;
+      border-bottom: 1px solid var(--divider);
+      padding: 0 12px;
+      text-align: left;
+      white-space: nowrap;
+      vertical-align: middle;
+    }
+
+    th {
+      position: sticky;
+      top: 0;
+      background: var(--card-2);
+      z-index: 1;
+      color: var(--text-2);
+      font-weight: 500;
+      letter-spacing: 0.2px;
+    }
+
+    tbody tr:hover td {
+      background: rgba(255, 255, 255, 0.03);
+    }
+
+    #leaderTable th:nth-child(3),
+    #leaderTable th:nth-child(4),
+    #leaderTable th:nth-child(5),
+    #leaderTable td:nth-child(3),
+    #leaderTable td:nth-child(4),
+    #leaderTable td:nth-child(5),
+    #walletTable th:nth-child(4),
+    #walletTable th:nth-child(5),
+    #walletTable th:nth-child(6),
+    #walletTable td:nth-child(4),
+    #walletTable td:nth-child(5),
+    #walletTable td:nth-child(6),
+    #txDelayTable th:nth-child(4),
+    #txDelayTable td:nth-child(4) {
+      text-align: right;
+    }
+
+    #launchConfigTable th:nth-child(3),
+    #launchConfigTable td:nth-child(3) {
+      text-align: center;
+    }
+
+    .delay-good {
+      color: var(--success);
+    }
+
+    .delay-warn {
+      color: var(--warn);
+    }
+
+    .delay-bad {
+      color: var(--danger);
+    }
+
+    .ui-tip {
+      display: inline-flex;
+      align-items: center;
+      color: inherit;
+      cursor: default;
+    }
+
+    .hover-tip {
+      position: fixed;
+      left: 0;
+      top: 0;
+      transform: translate(-9999px, -9999px);
+      background: var(--card-2);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      box-shadow: var(--shadow-1);
+      font-family: var(--sans);
+      font-size: 11px;
+      line-height: 1.4;
+      white-space: nowrap;
+      padding: 6px 10px;
+      max-width: min(80vw, 520px);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      pointer-events: none;
+      opacity: 0;
+      z-index: 30;
+      transition: opacity var(--t-fast);
+    }
+
+    .hover-tip.show {
+      opacity: 1;
+    }
+
+    .muted {
+      color: var(--text-3);
+    }
+
+    *::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+
+    *::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    *::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.12);
+      border-radius: 999px;
+    }
+
+    *::-webkit-scrollbar-thumb:hover {
+      background: rgba(255, 255, 255, 0.18);
+    }
+
+    @keyframes fadeUp {
+      from {
+        opacity: 0;
+        transform: translateY(6px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @media (max-width: 1100px) {
+      body {
+        padding: 14px;
+      }
+
+      .grid-4 {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .grid-5 {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .grid-2 {
+        grid-template-columns: 1fr;
+      }
+
+      .form-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .card {
+        padding: 18px;
+      }
+
+      table {
+        min-width: 640px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <section class="header">
+      <div>
+        <div class="title">V-Pulse 盘面雷达</div>
+        <div class="subtitle">v3.1.0 | 三进程 | 链上价格 | 无 Supabase 热路径</div>
+      </div>
+      <div class="controls">
+        <select id="projectSelect" class="pill"></select>
+        <input id="scanStartUtc8" type="datetime-local" class="pill-input" />
+        <input id="scanEndUtc8" type="datetime-local" class="pill-input" />
+        <button id="scanRangeBtn" class="pill">按区间回扫(UTC+8)</button>
+        <button id="scanCancelBtn" class="pill" disabled>取消回扫</button>
+        <button id="refreshBtn" class="pill">刷新</button>
+        <button id="fastModeBtn" class="pill">极速模式：关(0.5s)</button>
+        <button id="superModeBtn" class="pill">超速模式：关(0.25s)</button>
+        <span id="refreshMessage" class="hint">-</span>
+      </div>
+    </section>
+
+    <section class="card ui-bar">
+      <span id="refreshPerf" class="hint">刷新耗时：-</span>
+      <span id="delayPerf" class="hint">录入延迟 P50/P95：-</span>
+    </section>
+
+    <section class="card">
+      <div class="section-title">入库批量调节（DB_BATCH_SIZE）</div>
+      <div class="batch-tuning-row">
+        <button class="pill db-batch-preset" type="button" data-batch-size="1">1</button>
+        <button class="pill db-batch-preset" type="button" data-batch-size="5">5</button>
+        <button class="pill db-batch-preset" type="button" data-batch-size="10">10</button>
+        <button class="pill db-batch-preset" type="button" data-batch-size="20">20</button>
+        <button class="pill db-batch-preset" type="button" data-batch-size="50">50</button>
+        <input id="dbBatchInput" type="number" min="1" max="100" step="1" class="pill-input" style="min-width: 120px;" placeholder="自定义(1~100)" />
+        <button id="applyDbBatchBtn" class="pill">应用批量</button>
+        <span id="dbBatchMessage" class="hint">当前：-</span>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="section-title">项目配置管理（仅可修改 name / 内盘地址）</div>
+      <div class="form-grid">
+        <div class="field">
+          <label for="lcName">name（项目名）</label>
+          <input id="lcName" placeholder="例如 WORK2" />
+        </div>
+        <div class="field">
+          <label for="lcInternalPool">internal_pool_addr（必填）</label>
+          <input id="lcInternalPool" placeholder="0x..." />
+        </div>
+      </div>
+
+      <div class="form-actions">
+        <label class="hint">
+          <input id="lcSwitchOnly" type="checkbox" checked />
+          仅监控当前项目（停用其它项目监听，历史数据保留）
+        </label>
+        <button id="saveConfigBtn" class="pill">保存/切换项目</button>
+        <button id="deleteConfigBtn" class="pill">删除项目</button>
+        <span id="fixedInfo" class="hint">固定参数：加载中...</span>
+        <span id="lcMessage" class="hint">-</span>
+      </div>
+
+      <div class="table-wrap">
+        <table id="launchConfigTable">
+          <thead>
+            <tr>
+              <th>项目</th>
+              <th>内盘地址</th>
+              <th>启用</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="grid-5">
+      <div class="card">
+        <div class="kpi-title">连接状态</div>
+        <div id="wsStatus" class="kpi-value">-</div>
+      </div>
+      <div class="card">
+        <div class="kpi-title">价格 (VIRTUAL/USD)</div>
+        <div id="priceValue" class="kpi-value">-</div>
+      </div>
+      <div class="card">
+        <div class="kpi-title">队列 / 待处理</div>
+        <div id="queueValue" class="kpi-value">-</div>
+      </div>
+      <div class="card">
+        <div class="kpi-title">已解析 / 已入库</div>
+        <div id="parsedValue" class="kpi-value">-</div>
+      </div>
+      <div class="card">
+        <div class="kpi-title">项目累计税收(V)</div>
+        <div id="projectTaxValue" class="kpi-value">-</div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="section-title">分钟消耗 SpentV（柱状图）</div>
+      <div class="minute-range-controls">
+        <input id="minuteStartUtc8" type="datetime-local" class="pill-input" />
+        <input id="minuteEndUtc8" type="datetime-local" class="pill-input" />
+        <button id="minuteRangeBtn" class="pill">应用分钟区间(UTC+8)</button>
+        <span id="minuteRangeMessage" class="hint">-</span>
+      </div>
+      <div class="chart-wrap">
+        <canvas id="minuteChart"></canvas>
+      </div>
+      <div id="minuteMeta" class="muted" style="margin-top:8px;font-family:var(--mono);font-size:12px;">-</div>
+    </section>
+
+    <section class="card">
+      <div class="section-title">大户榜</div>
+      <div class="table-wrap">
+        <table id="leaderTable">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>买家地址</th>
+              <th>累计估算花费V</th>
+              <th>累计买入代币(万)</th>
+              <th>FDV_USD(万)</th>
+              <th>最近交易时间</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+
+    <section class="card">
+      <div class="section-title">我的钱包持仓</div>
+      <div class="wallet-config-bar">
+        <input id="walletInput" class="pill-input" placeholder="添加监控钱包 0x..." />
+        <button id="addWalletBtn" class="pill">添加钱包</button>
+        <span id="walletCfgMessage" class="hint">可在此新增/删除监控钱包，保存到本地数据库。</span>
+      </div>
+      <div id="walletConfigList" class="wallet-config-list"></div>
+      <div class="table-wrap">
+        <table id="walletTable">
+          <thead>
+            <tr>
+              <th>项目</th>
+              <th>钱包地址</th>
+              <th>代币地址</th>
+              <th>累计花费V</th>
+              <th>累计代币数量(万)</th>
+              <th>FDV_USD(万)</th>
+              <th>更新时间</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="section-title">交易录入延迟</div>
+      <div class="table-wrap">
+        <table id="txDelayTable">
+          <thead>
+            <tr>
+              <th>交易哈希</th>
+              <th>交易产生时间</th>
+              <th>录入时间</th>
+              <th>时间差(秒)</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+  </div>
+  <div id="hoverTip" class="hover-tip" aria-hidden="true"></div>
+
+  <script>
+    const projectSelect = document.getElementById("projectSelect");
+    const scanStartUtc8 = document.getElementById("scanStartUtc8");
+    const scanEndUtc8 = document.getElementById("scanEndUtc8");
+    const scanRangeBtn = document.getElementById("scanRangeBtn");
+    const scanCancelBtn = document.getElementById("scanCancelBtn");
+    const minuteStartUtc8 = document.getElementById("minuteStartUtc8");
+    const minuteEndUtc8 = document.getElementById("minuteEndUtc8");
+    const minuteRangeBtn = document.getElementById("minuteRangeBtn");
+    const minuteRangeMessage = document.getElementById("minuteRangeMessage");
+    const refreshBtn = document.getElementById("refreshBtn");
+    const fastModeBtn = document.getElementById("fastModeBtn");
+    const superModeBtn = document.getElementById("superModeBtn");
+    const refreshMessage = document.getElementById("refreshMessage");
+    const hoverTip = document.getElementById("hoverTip");
+    const refreshPerf = document.getElementById("refreshPerf");
+    const delayPerf = document.getElementById("delayPerf");
+    const dbBatchInput = document.getElementById("dbBatchInput");
+    const applyDbBatchBtn = document.getElementById("applyDbBatchBtn");
+    const dbBatchMessage = document.getElementById("dbBatchMessage");
+    const wsStatus = document.getElementById("wsStatus");
+    const priceValue = document.getElementById("priceValue");
+    const queueValue = document.getElementById("queueValue");
+    const parsedValue = document.getElementById("parsedValue");
+    const projectTaxValue = document.getElementById("projectTaxValue");
+    const minuteMeta = document.getElementById("minuteMeta");
+    const walletBody = document.querySelector("#walletTable tbody");
+    const walletInput = document.getElementById("walletInput");
+    const addWalletBtn = document.getElementById("addWalletBtn");
+    const walletCfgMessage = document.getElementById("walletCfgMessage");
+    const walletConfigList = document.getElementById("walletConfigList");
+    const leaderBody = document.querySelector("#leaderTable tbody");
+    const txDelayBody = document.querySelector("#txDelayTable tbody");
+    const launchConfigBody = document.querySelector("#launchConfigTable tbody");
+    const chart = document.getElementById("minuteChart");
+    const ctx = chart.getContext("2d");
+    const lcName = document.getElementById("lcName");
+    const lcInternalPool = document.getElementById("lcInternalPool");
+    const lcSwitchOnly = document.getElementById("lcSwitchOnly");
+    const saveConfigBtn = document.getElementById("saveConfigBtn");
+    const deleteConfigBtn = document.getElementById("deleteConfigBtn");
+    const fixedInfo = document.getElementById("fixedInfo");
+    const lcMessage = document.getElementById("lcMessage");
+    const LEGACY_FAST_MODE_STORAGE_KEY = "virtuals_fast_mode";
+    const REFRESH_MODE_STORAGE_KEY = "virtuals_refresh_mode";
+    const PROJECT_STORAGE_KEY = "virtuals_selected_project";
+    const SCAN_START_STORAGE_KEY = "virtuals_scan_start_utc8";
+    const SCAN_END_STORAGE_KEY = "virtuals_scan_end_utc8";
+    const MINUTE_START_STORAGE_KEY = "virtuals_minute_start_utc8";
+    const MINUTE_END_STORAGE_KEY = "virtuals_minute_end_utc8";
+    const NORMAL_REFRESH_MS = 1000;
+    const FAST_REFRESH_MS = 500;
+    const SUPER_REFRESH_MS = 250;
+    const SUPER_MODE_GUARD_RATIO = 0.7;
+    const SUPER_MODE_GUARD_HITS = 3;
+    let minuteRangeApplied = null;
+    let lastChartCssWidth = "";
+    let refreshInFlight = false;
+    let refreshQueued = false;
+    let resizeRefreshTimer = null;
+    let currentRefreshMode = "normal";
+    let autoRefreshMs = NORMAL_REFRESH_MS;
+    let autoRefreshTimer = null;
+    let superModeOverloadHits = 0;
+    let tipMouseInside = false;
+    let tipPointerX = 0;
+    let tipPointerY = 0;
+    let currentScanJobId = null;
+    let monitoredWallets = [];
+    let launchConfigRowsCache = [];
+    let currentDbBatchSize = null;
+    const apiBaseMeta = document.querySelector('meta[name="vpulse-api-base"]');
+    const API_BASE_URL = String(apiBaseMeta?.getAttribute("content") || "")
+      .trim()
+      .replace(/\/+$/, "");
+
+    const toNum = (v) => {
+      const n = Number(v);
+      return Number.isFinite(n) ? n : 0;
+    };
+
+    function buildApiUrl(path) {
+      const p = String(path || "");
+      if (!p) return API_BASE_URL || "/";
+      if (/^https?:\/\//i.test(p)) return p;
+      if (!API_BASE_URL) return p;
+      if (p.startsWith("/")) return `${API_BASE_URL}${p}`;
+      return `${API_BASE_URL}/${p}`;
+    }
+
+    function percentile(values, p) {
+      if (!values.length) return null;
+      const sorted = [...values].sort((a, b) => a - b);
+      const i = (sorted.length - 1) * p;
+      const lo = Math.floor(i);
+      const hi = Math.ceil(i);
+      if (lo === hi) return sorted[lo];
+      return sorted[lo] + (sorted[hi] - sorted[lo]) * (i - lo);
+    }
+
+    function updateDelayPerf(rows) {
+      const values = rows
+        .map((r) => Number(r.delay_sec))
+        .filter((x) => Number.isFinite(x) && x >= 0);
+      if (!values.length) {
+        delayPerf.textContent = "录入延迟 P50/P95：-";
+        return;
+      }
+      const p50 = percentile(values, 0.5);
+      const p95 = percentile(values, 0.95);
+      delayPerf.textContent = `录入延迟 P50/P95：${fmtNum(p50, 2)}s / ${fmtNum(p95, 2)}s`;
+    }
+
+    function delayClass(delaySec) {
+      if (!Number.isFinite(delaySec)) return "";
+      if (delaySec <= 5) return "delay-good";
+      if (delaySec <= 15) return "delay-warn";
+      return "delay-bad";
+    }
+
+    function fmtNum(v, digits = 6) {
+      if (v === null || v === undefined) return "-";
+      const n = Number(v);
+      if (!Number.isFinite(n)) return String(v);
+      return n.toLocaleString("zh-CN", { maximumFractionDigits: digits });
+    }
+
+    function fmtNumFixed(v, digits = 2) {
+      if (v === null || v === undefined) return "-";
+      const n = Number(v);
+      if (!Number.isFinite(n)) return String(v);
+      return n.toLocaleString("zh-CN", {
+        minimumFractionDigits: digits,
+        maximumFractionDigits: digits,
+      });
+    }
+
+    function fmtWanFixed(v, digits = 2) {
+      if (v === null || v === undefined) return "-";
+      const n = Number(v);
+      if (!Number.isFinite(n)) return String(v);
+      const w = n / 10000;
+      return `${w.toLocaleString("zh-CN", {
+        minimumFractionDigits: digits,
+        maximumFractionDigits: digits,
+      })}万`;
+    }
+
+    function exactNumText(v) {
+      if (v === null || v === undefined) return "-";
+      return String(v);
+    }
+
+    function tipSpanHtml(displayText, tipText) {
+      const tip = String(tipText ?? "");
+      return `<span class="ui-tip" data-tip="${escAttr(tip)}">${displayText}</span>`;
+    }
+
+    function numWithExactTitle(displayText, rawValue) {
+      return tipSpanHtml(displayText, `精确值: ${exactNumText(rawValue)}`);
+    }
+
+    function shortAddr(addr) {
+      if (!addr || addr.length < 12) return addr || "-";
+      return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
+    }
+
+    function shortHash(tx) {
+      if (!tx || tx.length < 18) return tx || "-";
+      return `${tx.slice(0, 10)}...${tx.slice(-8)}`;
+    }
+
+    function escAttr(v) {
+      return String(v ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("\"", "&quot;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;");
+    }
+
+    function copyBtnHtml(text) {
+      if (!text) return "";
+      return `<button class="copy-btn" type="button" data-copy="${escAttr(text)}">复制</button>`;
+    }
+
+    function hideHoverTip() {
+      hoverTip.classList.remove("show");
+      hoverTip.setAttribute("aria-hidden", "true");
+      hoverTip.style.transform = "translate(-9999px, -9999px)";
+    }
+
+    function placeHoverTip(clientX, clientY) {
+      const pad = 12;
+      const offsetX = 14;
+      const offsetY = 18;
+      const rect = hoverTip.getBoundingClientRect();
+      let left = clientX + offsetX;
+      let top = clientY + offsetY;
+      if (left + rect.width + pad > window.innerWidth) {
+        left = Math.max(pad, clientX - rect.width - offsetX);
+      }
+      if (top + rect.height + pad > window.innerHeight) {
+        top = Math.max(pad, clientY - rect.height - offsetY);
+      }
+      hoverTip.style.transform = `translate(${Math.round(left)}px, ${Math.round(top)}px)`;
+    }
+
+    function showHoverTip(text, clientX, clientY) {
+      const tipText = String(text || "").trim();
+      if (!tipText) {
+        hideHoverTip();
+        return;
+      }
+      if (hoverTip.textContent !== tipText) {
+        hoverTip.textContent = tipText;
+      }
+      hoverTip.classList.add("show");
+      hoverTip.setAttribute("aria-hidden", "false");
+      placeHoverTip(clientX, clientY);
+    }
+
+    function findTipTargetAt(clientX, clientY) {
+      const el = document.elementFromPoint(clientX, clientY);
+      return el ? el.closest(".ui-tip[data-tip]") : null;
+    }
+
+    function syncHoverTipAtPointer() {
+      if (!tipMouseInside) {
+        hideHoverTip();
+        return;
+      }
+      const target = findTipTargetAt(tipPointerX, tipPointerY);
+      const tip = target ? String(target.getAttribute("data-tip") || "").trim() : "";
+      if (!tip) {
+        hideHoverTip();
+        return;
+      }
+      showHoverTip(tip, tipPointerX, tipPointerY);
+    }
+
+    function addrWithCopyHtml(addr) {
+      if (!addr) return "-";
+      const full = String(addr);
+      return `${tipSpanHtml(shortAddr(full), full)}${copyBtnHtml(full)}`;
+    }
+
+    function hashWithCopyHtml(tx) {
+      if (!tx) return "-";
+      const full = String(tx);
+      return `${tipSpanHtml(shortHash(full), full)}${copyBtnHtml(full)}`;
+    }
+
+    function fmtTs(ts) {
+      if (!ts) return "-";
+      const d = new Date(Number(ts) * 1000);
+      if (Number.isNaN(d.getTime())) return String(ts);
+      return d.toLocaleString();
+    }
+
+    function fmtHm(ts) {
+      if (!ts) return "-";
+      const d = new Date((Number(ts) + 8 * 3600) * 1000);
+      if (Number.isNaN(d.getTime())) return String(ts);
+      const hh = String(d.getUTCHours()).padStart(2, "0");
+      const mm = String(d.getUTCMinutes()).padStart(2, "0");
+      return `${hh}:${mm}`;
+    }
+
+    function fmtYmdHm(ts) {
+      if (!ts) return "-";
+      const d = new Date((Number(ts) + 8 * 3600) * 1000);
+      if (Number.isNaN(d.getTime())) return String(ts);
+      const y = d.getUTCFullYear();
+      const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+      const day = String(d.getUTCDate()).padStart(2, "0");
+      const hh = String(d.getUTCHours()).padStart(2, "0");
+      const mm = String(d.getUTCMinutes()).padStart(2, "0");
+      return `${y}/${m}/${day} ${hh}:${mm}`;
+    }
+
+    function fmtMd(ts) {
+      if (!ts) return "-";
+      const d = new Date((Number(ts) + 8 * 3600) * 1000);
+      if (Number.isNaN(d.getTime())) return String(ts);
+      const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+      const day = String(d.getUTCDate()).padStart(2, "0");
+      return `${m}/${day}`;
+    }
+
+    function tsToUtc8DatetimeLocal(ts) {
+      const d = new Date((Number(ts) + 8 * 3600) * 1000);
+      const y = d.getUTCFullYear();
+      const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+      const day = String(d.getUTCDate()).padStart(2, "0");
+      const hh = String(d.getUTCHours()).padStart(2, "0");
+      const mm = String(d.getUTCMinutes()).padStart(2, "0");
+      return `${y}-${m}-${day}T${hh}:${mm}`;
+    }
+
+    function parseUtc8DatetimeLocalToTs(v) {
+      const m = String(v || "").match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/);
+      if (!m) return null;
+      const y = Number(m[1]);
+      const mo = Number(m[2]);
+      const d = Number(m[3]);
+      const hh = Number(m[4]);
+      const mm = Number(m[5]);
+      const utcMs = Date.UTC(y, mo - 1, d, hh - 8, mm, 0, 0);
+      return Math.floor(utcMs / 1000);
+    }
+
+    async function jget(url) {
+      const apiUrl = buildApiUrl(url);
+      const r = await fetch(apiUrl, { cache: "no-store" });
+      if (!r.ok) throw new Error(`${r.status} ${apiUrl}`);
+      return await r.json();
+    }
+
+    function normalizeRefreshMode(mode) {
+      if (mode === "normal" || mode === "fast" || mode === "super") {
+        return mode;
+      }
+      return "normal";
+    }
+
+    function loadRefreshMode() {
+      try {
+        const mode = normalizeRefreshMode(localStorage.getItem(REFRESH_MODE_STORAGE_KEY) || "");
+        if (mode !== "normal") return mode;
+        // Backward compatibility: old bool key only had fast/non-fast.
+        if (localStorage.getItem(LEGACY_FAST_MODE_STORAGE_KEY) === "1") {
+          return "fast";
+        }
+      } catch (e) {
+        // ignore
+      }
+      return "normal";
+    }
+
+    function saveRefreshMode(mode) {
+      try {
+        const normalized = normalizeRefreshMode(mode);
+        localStorage.setItem(REFRESH_MODE_STORAGE_KEY, normalized);
+        localStorage.removeItem(LEGACY_FAST_MODE_STORAGE_KEY);
+      } catch (e) {
+        // ignore
+      }
+    }
+
+    function loadSavedProject() {
+      try {
+        return localStorage.getItem(PROJECT_STORAGE_KEY) || "";
+      } catch (e) {
+        return "";
+      }
+    }
+
+    function saveSelectedProject(name) {
+      try {
+        if (!name) return;
+        localStorage.setItem(PROJECT_STORAGE_KEY, name);
+      } catch (e) {
+        // ignore
+      }
+    }
+
+    function loadSavedDatetimeLocal(key) {
+      try {
+        const raw = (localStorage.getItem(key) || "").trim();
+        if (!raw) return "";
+        if (parseUtc8DatetimeLocalToTs(raw) === null) return "";
+        return raw;
+      } catch (e) {
+        return "";
+      }
+    }
+
+    function saveDatetimeLocal(key, value) {
+      try {
+        const raw = String(value || "").trim();
+        if (!raw) {
+          localStorage.removeItem(key);
+          return;
+        }
+        if (parseUtc8DatetimeLocalToTs(raw) === null) return;
+        localStorage.setItem(key, raw);
+      } catch (e) {
+        // ignore
+      }
+    }
+
+    function setDbBatchSizeUi(value) {
+      const n = Math.max(1, Math.min(100, Number(value) || 1));
+      currentDbBatchSize = n;
+      dbBatchInput.value = String(n);
+      document.querySelectorAll(".db-batch-preset").forEach((btn) => {
+        const v = Number(btn.getAttribute("data-batch-size"));
+        btn.classList.toggle("is-active", v === n);
+      });
+      dbBatchMessage.textContent = `当前：${n}`;
+    }
+
+    function renderMonitoredWallets(rows) {
+      monitoredWallets = (rows || [])
+        .map((x) => String(x || "").trim().toLowerCase())
+        .filter((x) => x);
+      walletConfigList.innerHTML = "";
+      if (!monitoredWallets.length) {
+        const empty = document.createElement("div");
+        empty.className = "muted";
+        empty.textContent = "当前未配置监控钱包。";
+        walletConfigList.appendChild(empty);
+        return;
+      }
+      monitoredWallets.forEach((wallet) => {
+        const row = document.createElement("div");
+        row.className = "wallet-chip";
+        row.innerHTML = `
+          <span>${addrWithCopyHtml(wallet)}</span>
+          <button class="pill wallet-recalc-btn" type="button" data-wallet-recalc="${escAttr(wallet)}">重算当前项目</button>
+          <button class="pill wallet-remove-btn" type="button" data-wallet-remove="${escAttr(wallet)}">删除</button>
+        `;
+        walletConfigList.appendChild(row);
+      });
+    }
+
+    function restartAutoRefreshTimer() {
+      if (autoRefreshTimer) {
+        clearInterval(autoRefreshTimer);
+      }
+      autoRefreshTimer = setInterval(() => refreshAllSafe().catch(console.error), autoRefreshMs);
+    }
+
+    function refreshModeMs(mode) {
+      if (mode === "super") return SUPER_REFRESH_MS;
+      if (mode === "fast") return FAST_REFRESH_MS;
+      return NORMAL_REFRESH_MS;
+    }
+
+    function setRefreshMode(mode, { persist = true } = {}) {
+      const nextMode = normalizeRefreshMode(mode);
+      currentRefreshMode = nextMode;
+      autoRefreshMs = refreshModeMs(nextMode);
+      if (nextMode !== "super") {
+        superModeOverloadHits = 0;
+      }
+      fastModeBtn.textContent =
+        nextMode === "fast" ? "极速模式：开(0.5s)" : "极速模式：关(0.5s)";
+      superModeBtn.textContent =
+        nextMode === "super" ? "超速模式：开(0.25s)" : "超速模式：关(0.25s)";
+      fastModeBtn.classList.toggle("is-active", nextMode === "fast");
+      superModeBtn.classList.toggle("is-active", nextMode === "super");
+      restartAutoRefreshTimer();
+      if (persist) {
+        saveRefreshMode(nextMode);
+      }
+    }
+
+    async function copyText(text) {
+      const val = String(text || "");
+      if (!val) return false;
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(val);
+          return true;
+        }
+      } catch (e) {
+        // fallthrough
+      }
+      const ta = document.createElement("textarea");
+      ta.value = val;
+      ta.style.position = "fixed";
+      ta.style.left = "-9999px";
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      let ok = false;
+      try {
+        ok = document.execCommand("copy");
+      } catch (e) {
+        ok = false;
+      }
+      ta.remove();
+      return ok;
+    }
+
+    async function loadMeta() {
+      const meta = await jget("/meta");
+      const current = projectSelect.value || loadSavedProject();
+      if (Array.isArray(meta.launchConfigs)) {
+        launchConfigRowsCache = meta.launchConfigs;
+      }
+      projectSelect.innerHTML = "";
+      for (const p of meta.projects || []) {
+        const opt = document.createElement("option");
+        opt.value = p;
+        opt.textContent = p;
+        projectSelect.appendChild(opt);
+      }
+      if (current && (meta.projects || []).includes(current)) {
+        projectSelect.value = current;
+      } else if (meta.projects && meta.projects.length) {
+        projectSelect.value = meta.projects[0];
+      }
+      saveSelectedProject(projectSelect.value);
+      if (meta.fixedDefaults) {
+        fixedInfo.innerHTML =
+          `固定参数：fee_addr=${addrWithCopyHtml(meta.fixedDefaults.fee_addr)} | ` +
+          `tax_addr=${addrWithCopyHtml(meta.fixedDefaults.tax_addr)} | ` +
+          `supply=${fmtNum(meta.fixedDefaults.token_total_supply, 0)} | ` +
+          `fee_rate=${fmtNum(meta.fixedDefaults.fee_rate, 6)}`;
+      }
+      if (meta.runtimeTuning && Number.isFinite(Number(meta.runtimeTuning.db_batch_size))) {
+        setDbBatchSizeUi(Number(meta.runtimeTuning.db_batch_size));
+      }
+      renderMonitoredWallets(meta.wallets || []);
+      syncLaunchFormToSelectedProject(projectSelect.value);
+      return meta;
+    }
+
+    function initScanInputsIfEmpty() {
+      const now = Math.floor(Date.now() / 1000);
+      const savedStart = loadSavedDatetimeLocal(SCAN_START_STORAGE_KEY);
+      const savedEnd = loadSavedDatetimeLocal(SCAN_END_STORAGE_KEY);
+      if (!scanEndUtc8.value) {
+        scanEndUtc8.value = savedEnd || tsToUtc8DatetimeLocal(now);
+      }
+      if (!scanStartUtc8.value) {
+        scanStartUtc8.value = savedStart || tsToUtc8DatetimeLocal(now - 3600);
+      }
+      saveDatetimeLocal(SCAN_START_STORAGE_KEY, scanStartUtc8.value);
+      saveDatetimeLocal(SCAN_END_STORAGE_KEY, scanEndUtc8.value);
+    }
+
+    function initMinuteInputsIfEmpty() {
+      const now = Math.floor(Date.now() / 1000);
+      const savedStart = loadSavedDatetimeLocal(MINUTE_START_STORAGE_KEY);
+      const savedEnd = loadSavedDatetimeLocal(MINUTE_END_STORAGE_KEY);
+      if (!minuteEndUtc8.value) {
+        minuteEndUtc8.value = savedEnd || tsToUtc8DatetimeLocal(now);
+      }
+      if (!minuteStartUtc8.value) {
+        minuteStartUtc8.value = savedStart || tsToUtc8DatetimeLocal(now - 3600);
+      }
+      saveDatetimeLocal(MINUTE_START_STORAGE_KEY, minuteStartUtc8.value);
+      saveDatetimeLocal(MINUTE_END_STORAGE_KEY, minuteEndUtc8.value);
+      const startTs = parseUtc8DatetimeLocalToTs(minuteStartUtc8.value);
+      const endTs = parseUtc8DatetimeLocalToTs(minuteEndUtc8.value);
+      if (startTs && endTs && endTs >= startTs) {
+        minuteRangeApplied = { from: startTs, to: endTs };
+      }
+    }
+
+    function getMinuteRangeTs() {
+      if (minuteRangeApplied && minuteRangeApplied.to >= minuteRangeApplied.from) {
+        return minuteRangeApplied;
+      }
+      const startTs = parseUtc8DatetimeLocalToTs(minuteStartUtc8.value);
+      const endTs = parseUtc8DatetimeLocalToTs(minuteEndUtc8.value);
+      if (startTs && endTs && endTs >= startTs) {
+        minuteRangeApplied = { from: startTs, to: endTs };
+        return minuteRangeApplied;
+      }
+      const now = Math.floor(Date.now() / 1000);
+      return { from: now - 3600, to: now };
+    }
+
+    async function applyMinuteRange() {
+      const startTs = parseUtc8DatetimeLocalToTs(minuteStartUtc8.value);
+      const endTs = parseUtc8DatetimeLocalToTs(minuteEndUtc8.value);
+      if (!startTs || !endTs) {
+        throw new Error("请填写有效的分钟区间 UTC+8 时间");
+      }
+      if (endTs < startTs) {
+        throw new Error("分钟区间结束时间不能早于开始时间");
+      }
+      minuteRangeApplied = { from: startTs, to: endTs };
+      await refreshAllSafe();
+      minuteRangeMessage.textContent = `已应用分钟区间：${fmtTs(startTs)} ~ ${fmtTs(endTs)}`;
+      return true;
+    }
+
+    function fillLaunchForm(row) {
+      lcName.value = row.name || "";
+      lcInternalPool.value = row.internal_pool_addr || "";
+    }
+
+    function syncLaunchFormToSelectedProject(preferName) {
+      const rows = launchConfigRowsCache || [];
+      if (!rows.length) {
+        return false;
+      }
+      const targetName = String(preferName || projectSelect.value || "").trim();
+      const row =
+        rows.find((x) => String(x?.name || "").trim() === targetName) || rows[0];
+      fillLaunchForm(row);
+      return true;
+    }
+
+    function renderLaunchConfigTable(rows) {
+      launchConfigBody.innerHTML = "";
+      rows.forEach((r) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${r.name || "-"}</td>
+          <td>${addrWithCopyHtml(r.internal_pool_addr)}</td>
+          <td>${r.is_enabled ? "是" : "否"}</td>
+        `;
+        tr.style.cursor = "pointer";
+        tr.addEventListener("click", () => fillLaunchForm(r));
+        launchConfigBody.appendChild(tr);
+      });
+      if (!rows.length) {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `<td colspan="3" class="muted">暂无项目配置。</td>`;
+        launchConfigBody.appendChild(tr);
+      }
+    }
+
+    async function loadLaunchConfigs() {
+      const data = await jget("/launch-configs");
+      const rows = data.items || [];
+      launchConfigRowsCache = rows;
+      renderLaunchConfigTable(rows);
+      syncLaunchFormToSelectedProject();
+      return rows;
+    }
+
+    async function requestJsonWithBody(url, method, payload) {
+      const apiUrl = buildApiUrl(url);
+      const resp = await fetch(apiUrl, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: payload ? JSON.stringify(payload) : undefined
+      });
+      const raw = await resp.text();
+      let data;
+      try {
+        data = JSON.parse(raw);
+      } catch (e) {
+        throw new Error(`接口返回非 JSON（可能后端版本未更新）：${raw.slice(0, 100)}`);
+      }
+      if (!resp.ok) {
+        throw new Error(data.error || `${method} 失败`);
+      }
+      return data;
+    }
+
+    async function saveLaunchConfig() {
+      const payload = {
+        name: lcName.value.trim(),
+        internal_pool_addr: lcInternalPool.value.trim(),
+        switch_only: lcSwitchOnly.checked,
+        is_enabled: true
+      };
+      const data = await requestJsonWithBody("/launch-configs", "POST", payload);
+      lcMessage.textContent = `保存成功，当前监控项目：${(data.monitoringProjects || []).join(", ") || "-"}`;
+      await loadMeta();
+      if (payload.name && [...projectSelect.options].some(o => o.value === payload.name)) {
+        projectSelect.value = payload.name;
+        saveSelectedProject(projectSelect.value);
+      }
+      launchConfigRowsCache = data.items || [];
+      renderLaunchConfigTable(launchConfigRowsCache);
+      syncLaunchFormToSelectedProject(payload.name || projectSelect.value);
+      await refreshAllSafe();
+    }
+
+    async function deleteLaunchConfig() {
+      const name = lcName.value.trim();
+      if (!name) {
+        throw new Error("请先输入要删除的项目名");
+      }
+      const ok = confirm(`确认删除项目 ${name} ?\n仅删除配置，不删除历史统计数据。`);
+      if (!ok) {
+        lcMessage.textContent = "已取消删除";
+        return false;
+      }
+      const data = await requestJsonWithBody(`/launch-configs/${encodeURIComponent(name)}`, "DELETE");
+      lcMessage.textContent = `删除成功，当前监控项目：${(data.monitoringProjects || []).join(", ") || "无"}`;
+      await loadMeta();
+      launchConfigRowsCache = data.items || [];
+      renderLaunchConfigTable(launchConfigRowsCache);
+      if (![...projectSelect.options].some(o => o.value === projectSelect.value) && projectSelect.options.length > 0) {
+        projectSelect.value = projectSelect.options[0].value;
+      }
+      saveSelectedProject(projectSelect.value);
+      syncLaunchFormToSelectedProject(projectSelect.value);
+      await refreshAllSafe();
+      return true;
+    }
+
+    async function addMonitoredWallet() {
+      const wallet = walletInput.value.trim();
+      if (!wallet) {
+        throw new Error("请输入钱包地址");
+      }
+      const data = await requestJsonWithBody("/wallet-configs", "POST", { wallet });
+      renderMonitoredWallets(data.items || []);
+      walletInput.value = "";
+      walletCfgMessage.textContent = `钱包已保存，当前监控数：${data.count ?? (data.items || []).length}`;
+      await refreshAllSafe();
+      return true;
+    }
+
+    async function deleteMonitoredWallet(wallet) {
+      const target = String(wallet || "").trim();
+      if (!target) {
+        throw new Error("缺少钱包地址");
+      }
+      const data = await requestJsonWithBody(
+        `/wallet-configs/${encodeURIComponent(target)}`,
+        "DELETE"
+      );
+      renderMonitoredWallets(data.items || []);
+      walletCfgMessage.textContent = `钱包已删除，当前监控数：${data.count ?? (data.items || []).length}`;
+      await refreshAllSafe();
+      return true;
+    }
+
+    async function recalcWalletForCurrentProject(wallet) {
+      const project = String(projectSelect.value || "").trim();
+      if (!project) {
+        throw new Error("请先选择项目");
+      }
+      const target = String(wallet || "").trim();
+      if (!target) {
+        throw new Error("缺少钱包地址");
+      }
+      const data = await requestJsonWithBody("/wallet-recalc", "POST", {
+        project,
+        wallet: target,
+      });
+      walletCfgMessage.textContent =
+        `重算完成：项目=${data.project} 钱包=${shortAddr(data.wallet)} ` +
+        `事件=${data.eventCount} 代币=${data.tokenCount} 耗时=${data.durationMs}ms`;
+      await refreshAllSafe();
+      return true;
+    }
+
+    async function applyDbBatchSize(value) {
+      const n = Number(value);
+      if (!Number.isFinite(n) || !Number.isInteger(n)) {
+        throw new Error("DB_BATCH_SIZE 必须是整数");
+      }
+      if (n < 1 || n > 100) {
+        throw new Error("DB_BATCH_SIZE 范围是 1~100");
+      }
+      const data = await requestJsonWithBody("/runtime/db-batch-size", "POST", {
+        db_batch_size: n,
+      });
+      setDbBatchSizeUi(Number(data.dbBatchSize || n));
+      dbBatchMessage.textContent = `已应用：${Number(data.dbBatchSize || n)}`;
+      return true;
+    }
+
+    async function pollScanJob(jobId) {
+      const started = Date.now();
+      while (Date.now() - started < 1000 * 60 * 20) {
+        const job = await jget(`/scan-jobs/${encodeURIComponent(jobId)}`);
+        const status = job.status || "-";
+        const chunkInfo = `${job.processedChunks || 0}/${job.totalChunks || 0}`;
+        refreshMessage.textContent =
+          `回扫任务 ${jobId} | 状态=${status} | 分块=${chunkInfo} | 扫描Tx=${job.scannedTx || 0} | 入库增量=${job.insertedDelta || 0}`;
+        if (status === "done") {
+          await loadMeta();
+          await refreshAllSafe();
+          return true;
+        }
+        if (status === "canceled") {
+          refreshMessage.textContent = `回扫任务 ${jobId} 已取消`;
+          await loadMeta();
+          await refreshAllSafe();
+          return false;
+        }
+        if (status === "failed") {
+          throw new Error(job.error || "回扫失败");
+        }
+        await new Promise(r => setTimeout(r, 1500));
+      }
+      throw new Error("回扫等待超时，请稍后手动刷新");
+    }
+
+    async function scanRangeByUtc8() {
+      const startTs = parseUtc8DatetimeLocalToTs(scanStartUtc8.value);
+      const endTs = parseUtc8DatetimeLocalToTs(scanEndUtc8.value);
+      if (!startTs || !endTs) {
+        throw new Error("请填写有效的 UTC+8 时间区间");
+      }
+      if (endTs < startTs) {
+        throw new Error("结束时间不能早于开始时间");
+      }
+      const project = projectSelect.value || null;
+      const create = await requestJsonWithBody("/scan-range", "POST", {
+        project,
+        start_ts: startTs,
+        end_ts: endTs,
+      });
+      const jobId = create.jobId;
+      if (!jobId) {
+        throw new Error("回扫任务创建失败");
+      }
+      currentScanJobId = jobId;
+      scanCancelBtn.disabled = false;
+      refreshMessage.textContent = `回扫任务已创建：${jobId}，开始执行...`;
+      try {
+        const ok = await pollScanJob(jobId);
+        return ok;
+      } finally {
+        if (currentScanJobId === jobId) {
+          currentScanJobId = null;
+          scanCancelBtn.disabled = true;
+        }
+      }
+    }
+
+    async function cancelScanRangeJob() {
+      if (!currentScanJobId) {
+        throw new Error("当前没有可取消的回扫任务");
+      }
+      const jobId = currentScanJobId;
+      const resp = await requestJsonWithBody(
+        `/scan-jobs/${encodeURIComponent(jobId)}/cancel`,
+        "POST",
+        {}
+      );
+      if (resp?.alreadyFinal) {
+        refreshMessage.textContent = `任务 ${jobId} 已结束`;
+        return false;
+      }
+      refreshMessage.textContent = `已发送取消请求：${jobId}`;
+      return true;
+    }
+
+    function drawMinuteChart(rows) {
+      const dpr = window.devicePixelRatio || 1;
+      const wrap = chart.parentElement;
+      const baseW = Math.max(900, (wrap?.clientWidth || chart.clientWidth || 900));
+      const h = chart.clientHeight || 320;
+      const w = rows.length ? Math.max(baseW, 84 + rows.length * 52) : baseW;
+      const cssWidth = `${w}px`;
+      if (lastChartCssWidth !== cssWidth) {
+        chart.style.width = cssWidth;
+        lastChartCssWidth = cssWidth;
+      }
+      const pixelW = Math.floor(w * dpr);
+      const pixelH = Math.floor(h * dpr);
+      if (chart.width !== pixelW || chart.height !== pixelH) {
+        chart.width = pixelW;
+        chart.height = pixelH;
+      }
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+      ctx.clearRect(0, 0, w, h);
+      ctx.fillStyle = "rgba(13, 24, 48, 0.76)";
+      ctx.fillRect(0, 0, w, h);
+
+      if (!rows.length) {
+        ctx.fillStyle = "rgba(255, 255, 255, 0.48)";
+        ctx.font = "13px Cascadia Mono, monospace";
+        ctx.fillText("暂无分钟级数据", 12, 24);
+        return;
+      }
+
+      const points = rows.map(x => ({
+        x: Number(x.minute_key),
+        y: toNum(x.minute_spent_v)
+      }));
+      const maxY = Math.max(...points.map(p => p.y), 1e-12);
+
+      const padL = 56;
+      const padR = 16;
+      const padT = 26;
+      const padB = 58;
+      const cw = w - padL - padR;
+      const ch = h - padT - padB;
+
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.05)";
+      ctx.lineWidth = 1;
+      for (let i = 0; i <= 4; i++) {
+        const y = padT + (ch * i) / 4;
+        ctx.beginPath();
+        ctx.moveTo(padL, y);
+        ctx.lineTo(w - padR, y);
+        ctx.stroke();
+      }
+
+      ctx.fillStyle = "rgba(255, 255, 255, 0.48)";
+      ctx.font = "11px Cascadia Mono, monospace";
+      for (let i = 0; i <= 4; i++) {
+        const value = maxY * (1 - i / 4);
+        const y = padT + (ch * i) / 4;
+        ctx.fillText(fmtNum(Math.round(value), 0), 6, y + 4);
+      }
+
+      const slot = cw / Math.max(points.length, 1);
+      const barW = Math.max(4, Math.min(24, slot * 0.72));
+      const labelStep = points.length > 120 ? Math.ceil(points.length / 120) : 1;
+      const xLabelStep = Math.max(labelStep, Math.ceil(46 / Math.max(slot, 1)));
+      const firstTickLabel = points.length <= 8 ? fmtYmdHm(points[0]?.x) : fmtMd(points[0]?.x);
+
+      ctx.textAlign = "center";
+      ctx.textBaseline = "alphabetic";
+      for (let i = 0; i < points.length; i++) {
+        const p = points[i];
+        const barH = Math.max(1, (p.y / maxY) * ch);
+        const x = padL + i * slot + (slot - barW) / 2;
+        const y = padT + ch - barH;
+
+        const grad = ctx.createLinearGradient(0, y, 0, y + barH);
+        grad.addColorStop(0, "rgba(76, 201, 240, 0.82)");
+        grad.addColorStop(1, "rgba(76, 201, 240, 0.28)");
+        ctx.fillStyle = grad;
+        ctx.fillRect(x, y, barW, barH);
+
+        ctx.strokeStyle = "rgba(76, 201, 240, 0.42)";
+        ctx.lineWidth = 1;
+        ctx.strokeRect(x + 0.5, y + 0.5, Math.max(0, barW - 1), Math.max(0, barH - 1));
+
+        if (i % labelStep === 0 || i === points.length - 1) {
+          const valText = fmtNum(Math.round(p.y), 0);
+          ctx.font = "700 12px 'JetBrains Mono', 'Cascadia Mono', 'Consolas', monospace";
+          ctx.lineWidth = 3;
+          ctx.strokeStyle = "rgba(7, 11, 20, 0.88)";
+          ctx.fillStyle = "rgba(255, 243, 190, 0.98)";
+          ctx.shadowColor = "rgba(76, 201, 240, 0.55)";
+          ctx.shadowBlur = 10;
+          const labelY = Math.max(10, y - 4);
+          ctx.strokeText(valText, x + barW / 2, labelY);
+          ctx.fillText(valText, x + barW / 2, labelY);
+          ctx.shadowBlur = 0;
+          ctx.shadowColor = "transparent";
+        }
+      }
+
+      ctx.fillStyle = "rgba(255, 255, 255, 0.48)";
+      ctx.font = "10px Cascadia Mono, monospace";
+      ctx.textBaseline = "top";
+      for (let i = 0; i < points.length; i++) {
+        const isFirst = i === 0;
+        const isLast = i === points.length - 1;
+        if (!isFirst && !isLast && i % xLabelStep !== 0) {
+          continue;
+        }
+        const x = padL + i * slot + slot / 2;
+        const label = isFirst ? firstTickLabel : fmtHm(points[i].x);
+        if (isFirst) {
+          ctx.textAlign = "left";
+          ctx.fillText(label, padL, h - 20);
+        } else if (isLast) {
+          ctx.textAlign = "right";
+          ctx.fillText(label, w - padR, h - 20);
+        } else {
+          ctx.textAlign = "center";
+          ctx.fillText(label, x, h - 20);
+        }
+      }
+      ctx.textAlign = "start";
+    }
+
+    function renderWalletTable(rows) {
+      walletBody.innerHTML = "";
+      for (const r of rows) {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${r.project || "-"}</td>
+          <td>${addrWithCopyHtml(r.wallet)}</td>
+          <td>${addrWithCopyHtml(r.token_addr)}</td>
+          <td>${numWithExactTitle(fmtNum(r.sum_spent_v_est, 0), r.sum_spent_v_est)}</td>
+          <td>${numWithExactTitle(fmtWanFixed(r.sum_token_bought, 2), r.sum_token_bought)}</td>
+          <td>${numWithExactTitle(fmtWanFixed(r.breakeven_fdv_usd, 2), r.breakeven_fdv_usd)}</td>
+          <td>${fmtTs(r.updated_at)}</td>
+        `;
+        walletBody.appendChild(tr);
+      }
+      if (!rows.length) {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `<td colspan="7" class="muted">暂无钱包持仓数据。</td>`;
+        walletBody.appendChild(tr);
+      }
+    }
+
+    function renderLeaderTable(rows) {
+      leaderBody.innerHTML = "";
+      rows.forEach((r, idx) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${idx + 1}</td>
+          <td>${addrWithCopyHtml(r.buyer)}</td>
+          <td>${numWithExactTitle(fmtNum(r.sum_spent_v_est, 0), r.sum_spent_v_est)}</td>
+          <td>${numWithExactTitle(fmtWanFixed(r.sum_token_bought, 2), r.sum_token_bought)}</td>
+          <td>${numWithExactTitle(fmtWanFixed(r.breakeven_fdv_usd, 2), r.breakeven_fdv_usd)}</td>
+          <td>${fmtTs(r.last_tx_time)}</td>
+        `;
+        leaderBody.appendChild(tr);
+      });
+      if (!rows.length) {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `<td colspan="6" class="muted">暂无大户榜数据。</td>`;
+        leaderBody.appendChild(tr);
+      }
+    }
+
+    function renderTxDelayTable(rows) {
+      txDelayBody.innerHTML = "";
+      rows.forEach((r) => {
+        const delaySec = Number(r.delay_sec);
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${hashWithCopyHtml(r.tx_hash)}</td>
+          <td>${fmtTs(r.block_timestamp)}</td>
+          <td>${fmtTs(r.recorded_at)}</td>
+          <td class="${delayClass(delaySec)}">${fmtNum(delaySec, 0)}</td>
+        `;
+        txDelayBody.appendChild(tr);
+      });
+      if (!rows.length) {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `<td colspan="4" class="muted">暂无交易录入延迟数据。</td>`;
+        txDelayBody.appendChild(tr);
+      }
+      updateDelayPerf(rows);
+    }
+
+    async function refreshAll() {
+      const project = projectSelect.value;
+      const range = getMinuteRangeTs();
+      const from = range.from;
+      const to = range.to;
+      const walletUrl = project
+        ? `/mywallets?project=${encodeURIComponent(project)}`
+        : "/mywallets";
+      const tasks = [
+        jget("/health"),
+        jget(walletUrl),
+      ];
+      if (project) {
+        tasks.push(jget(`/minutes?project=${encodeURIComponent(project)}&from=${from}&to=${to}`));
+        tasks.push(jget(`/leaderboard?project=${encodeURIComponent(project)}&top=20`));
+        tasks.push(jget(`/event-delays?project=${encodeURIComponent(project)}&limit=80`));
+        tasks.push(jget(`/project-tax?project=${encodeURIComponent(project)}`));
+      } else {
+        tasks.push(Promise.resolve({ items: [] }));
+        tasks.push(Promise.resolve({ items: [] }));
+        tasks.push(Promise.resolve({ items: [] }));
+        tasks.push(Promise.resolve({ sum_tax_v: "0" }));
+      }
+      const [health, wallets, minutes, leader, txDelays, projectTax] = await Promise.all(tasks);
+
+      wsStatus.innerHTML = health.stats?.ws_connected
+        ? `<span class="status ok">已连接</span>`
+        : `<span class="status bad">未连接</span>`;
+      priceValue.innerHTML = numWithExactTitle(fmtNumFixed(health.price, 4), health.price);
+      queueValue.textContent = `${health.queueSize} / ${health.pendingTx}`;
+      parsedValue.textContent = `${health.stats?.parsed_events || 0} / ${health.stats?.inserted_events || 0}`;
+      projectTaxValue.innerHTML = project
+        ? numWithExactTitle(fmtNum(projectTax?.sum_tax_v ?? 0, 2), projectTax?.sum_tax_v ?? 0)
+        : "-";
+
+      const minuteRows = minutes.items || [];
+      drawMinuteChart(minuteRows);
+      minuteMeta.textContent = `项目=${project || "-"} | 点数=${minuteRows.length} | 从=${fmtTs(from)} | 到=${fmtTs(to)}`;
+
+      renderWalletTable(wallets.items || []);
+      renderLeaderTable(leader.items || []);
+      renderTxDelayTable(txDelays.items || []);
+    }
+
+    async function refreshAllSafe() {
+      if (refreshInFlight) {
+        refreshQueued = true;
+        return false;
+      }
+      refreshInFlight = true;
+      const startedAt = performance.now();
+      let ok = false;
+      try {
+        await refreshAll();
+        ok = true;
+        return true;
+      } finally {
+        const costMs = Math.round(performance.now() - startedAt);
+        refreshPerf.textContent = ok ? `刷新耗时：${costMs}ms` : `刷新耗时：失败(${costMs}ms)`;
+        if (currentRefreshMode === "super") {
+          const thresholdMs = Math.round(SUPER_REFRESH_MS * SUPER_MODE_GUARD_RATIO);
+          if (!ok || costMs > thresholdMs) {
+            superModeOverloadHits += 1;
+          } else {
+            superModeOverloadHits = 0;
+          }
+          if (superModeOverloadHits >= SUPER_MODE_GUARD_HITS) {
+            setRefreshMode("fast");
+            superModeOverloadHits = 0;
+            refreshMessage.textContent = `超速模式自动降级：刷新耗时连续偏高（>${thresholdMs}ms）`;
+          }
+        }
+        refreshInFlight = false;
+        if (refreshQueued) {
+          refreshQueued = false;
+          setTimeout(() => refreshAllSafe().catch(console.error), 0);
+        }
+      }
+    }
+
+    async function boot() {
+      try {
+        initScanInputsIfEmpty();
+        initMinuteInputsIfEmpty();
+        await loadMeta();
+        if (!Number.isFinite(currentDbBatchSize)) {
+          try {
+            const tuning = await jget("/runtime/db-batch-size");
+            if (Number.isFinite(Number(tuning.dbBatchSize))) {
+              setDbBatchSizeUi(Number(tuning.dbBatchSize));
+            }
+          } catch (e) {
+            // ignore older backend
+          }
+        }
+        await loadLaunchConfigs();
+        await refreshAllSafe();
+        const minuteRange = getMinuteRangeTs();
+        minuteRangeMessage.textContent = `当前分钟区间：${fmtTs(minuteRange.from)} ~ ${fmtTs(minuteRange.to)}`;
+        refreshMessage.textContent = "已就绪";
+      } catch (e) {
+        wsStatus.innerHTML = `<span class="status bad">初始化失败</span>`;
+        lcMessage.textContent = String(e.message || e);
+        refreshMessage.textContent = `初始化失败：${e.message || e}`;
+        console.error(e);
+      }
+    }
+
+    async function runButtonAction(button, texts, action, messageEl) {
+      const old = button.textContent;
+      button.disabled = true;
+      button.textContent = texts.loading;
+      try {
+        const result = await action();
+        if (result === false) {
+          button.textContent = old;
+          return;
+        }
+        button.textContent = texts.success;
+      } catch (e) {
+        button.textContent = texts.failed;
+        if (messageEl) {
+          messageEl.textContent = `${texts.failed}：${e.message || e}`;
+        }
+      } finally {
+        setTimeout(() => {
+          button.disabled = false;
+          button.textContent = old;
+        }, 900);
+      }
+    }
+
+    document.addEventListener("click", async (ev) => {
+      const recalcBtn = ev.target.closest(".wallet-recalc-btn");
+      if (recalcBtn) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        const wallet = recalcBtn.getAttribute("data-wallet-recalc") || "";
+        const old = recalcBtn.textContent || "重算当前项目";
+        recalcBtn.disabled = true;
+        recalcBtn.textContent = "重算中...";
+        try {
+          await recalcWalletForCurrentProject(wallet);
+          recalcBtn.textContent = "已重算";
+        } catch (e) {
+          recalcBtn.textContent = "失败";
+          walletCfgMessage.textContent = `重算失败：${e.message || e}`;
+        } finally {
+          setTimeout(() => {
+            recalcBtn.disabled = false;
+            recalcBtn.textContent = old;
+          }, 900);
+        }
+        return;
+      }
+
+      const removeBtn = ev.target.closest(".wallet-remove-btn");
+      if (removeBtn) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        const wallet = removeBtn.getAttribute("data-wallet-remove") || "";
+        const old = removeBtn.textContent || "删除";
+        removeBtn.disabled = true;
+        removeBtn.textContent = "删除中...";
+        try {
+          await deleteMonitoredWallet(wallet);
+          removeBtn.textContent = "已删除";
+        } catch (e) {
+          removeBtn.textContent = "失败";
+          walletCfgMessage.textContent = `删除失败：${e.message || e}`;
+        } finally {
+          setTimeout(() => {
+            removeBtn.disabled = false;
+            removeBtn.textContent = old;
+          }, 900);
+        }
+        return;
+      }
+
+      const btn = ev.target.closest(".copy-btn");
+      if (!btn) return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      const text = btn.getAttribute("data-copy") || "";
+      if (!text) return;
+      const ok = await copyText(text);
+      const old = btn.textContent;
+      btn.textContent = ok ? "已复制" : "失败";
+      refreshMessage.textContent = ok ? `已复制：${shortHash(text)}` : "复制失败";
+      setTimeout(() => {
+        btn.textContent = old || "复制";
+      }, 900);
+    });
+
+    window.addEventListener("pointermove", (ev) => {
+      tipMouseInside = true;
+      tipPointerX = ev.clientX;
+      tipPointerY = ev.clientY;
+      syncHoverTipAtPointer();
+    }, { passive: true });
+    window.addEventListener("pointerleave", () => {
+      tipMouseInside = false;
+      hideHoverTip();
+    });
+    window.addEventListener("blur", () => {
+      tipMouseInside = false;
+      hideHoverTip();
+    });
+    // Keep tooltip stable even when table rows are re-rendered by high-frequency refresh.
+    setInterval(() => {
+      if (tipMouseInside) {
+        syncHoverTipAtPointer();
+      }
+    }, 120);
+
+    refreshBtn.addEventListener("click", () => {
+      runButtonAction(
+        refreshBtn,
+        { loading: "刷新中...", success: "已刷新", failed: "刷新失败" },
+        async () => {
+          await refreshAllSafe();
+          refreshMessage.textContent = `刷新成功：${new Date().toLocaleTimeString()}`;
+        },
+        refreshMessage
+      ).catch(console.error);
+    });
+    scanRangeBtn.addEventListener("click", () => {
+      runButtonAction(
+        scanRangeBtn,
+        { loading: "回扫中...", success: "回扫完成", failed: "回扫失败" },
+        scanRangeByUtc8,
+        refreshMessage
+      ).catch(console.error);
+    });
+    scanStartUtc8.addEventListener("change", () => {
+      saveDatetimeLocal(SCAN_START_STORAGE_KEY, scanStartUtc8.value);
+    });
+    scanEndUtc8.addEventListener("change", () => {
+      saveDatetimeLocal(SCAN_END_STORAGE_KEY, scanEndUtc8.value);
+    });
+    minuteStartUtc8.addEventListener("change", () => {
+      saveDatetimeLocal(MINUTE_START_STORAGE_KEY, minuteStartUtc8.value);
+    });
+    minuteEndUtc8.addEventListener("change", () => {
+      saveDatetimeLocal(MINUTE_END_STORAGE_KEY, minuteEndUtc8.value);
+    });
+    scanCancelBtn.addEventListener("click", () => {
+      runButtonAction(
+        scanCancelBtn,
+        { loading: "取消中...", success: "已请求取消", failed: "取消失败" },
+        cancelScanRangeJob,
+        refreshMessage
+      ).catch(console.error);
+    });
+    minuteRangeBtn.addEventListener("click", () => {
+      runButtonAction(
+        minuteRangeBtn,
+        { loading: "应用中...", success: "已应用", failed: "应用失败" },
+        applyMinuteRange,
+        minuteRangeMessage
+      ).catch(console.error);
+    });
+    projectSelect.addEventListener("change", () => {
+      saveSelectedProject(projectSelect.value);
+      syncLaunchFormToSelectedProject(projectSelect.value);
+      refreshAllSafe().catch(console.error);
+    });
+    saveConfigBtn.addEventListener("click", () => {
+      runButtonAction(
+        saveConfigBtn,
+        { loading: "保存中...", success: "已保存", failed: "保存失败" },
+        saveLaunchConfig,
+        lcMessage
+      ).catch(console.error);
+    });
+    deleteConfigBtn.addEventListener("click", () => {
+      runButtonAction(
+        deleteConfigBtn,
+        { loading: "删除中...", success: "已删除", failed: "删除失败" },
+        deleteLaunchConfig,
+        lcMessage
+      ).catch(console.error);
+    });
+    addWalletBtn.addEventListener("click", () => {
+      runButtonAction(
+        addWalletBtn,
+        { loading: "添加中...", success: "已添加", failed: "添加失败" },
+        addMonitoredWallet,
+        walletCfgMessage
+      ).catch(console.error);
+    });
+    walletInput.addEventListener("keydown", (ev) => {
+      if (ev.key === "Enter") {
+        ev.preventDefault();
+        addWalletBtn.click();
+      }
+    });
+    applyDbBatchBtn.addEventListener("click", () => {
+      runButtonAction(
+        applyDbBatchBtn,
+        { loading: "应用中...", success: "已应用", failed: "应用失败" },
+        () => applyDbBatchSize(dbBatchInput.value),
+        dbBatchMessage
+      ).catch(console.error);
+    });
+    dbBatchInput.addEventListener("keydown", (ev) => {
+      if (ev.key === "Enter") {
+        ev.preventDefault();
+        applyDbBatchBtn.click();
+      }
+    });
+    document.querySelectorAll(".db-batch-preset").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const val = btn.getAttribute("data-batch-size");
+        runButtonAction(
+          applyDbBatchBtn,
+          { loading: "应用中...", success: "已应用", failed: "应用失败" },
+          () => applyDbBatchSize(val),
+          dbBatchMessage
+        ).catch(console.error);
+      });
+    });
+    fastModeBtn.addEventListener("click", () => {
+      const targetMode = currentRefreshMode === "fast" ? "normal" : "fast";
+      setRefreshMode(targetMode);
+      refreshMessage.textContent =
+        targetMode === "fast" ? "极速模式已开启：0.5秒刷新" : "极速模式已关闭：1秒刷新";
+    });
+    superModeBtn.addEventListener("click", () => {
+      const targetMode = currentRefreshMode === "super" ? "fast" : "super";
+      setRefreshMode(targetMode);
+      refreshMessage.textContent =
+        targetMode === "super"
+          ? "超速模式已开启：0.25秒刷新（高耗时将自动降级）"
+          : "超速模式已关闭：已切回极速模式(0.5秒)";
+    });
+    window.addEventListener("resize", () => {
+      if (resizeRefreshTimer) {
+        clearTimeout(resizeRefreshTimer);
+      }
+      resizeRefreshTimer = setTimeout(() => {
+        refreshAllSafe().catch(console.error);
+      }, 200);
+    });
+
+    setRefreshMode(loadRefreshMode(), { persist: false });
+    boot();
+  </script>
+</body>
+</html>
