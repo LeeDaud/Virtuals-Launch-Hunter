@@ -1,4 +1,4 @@
-# V-Pulse Deployment Guide (Backend on Server, Frontend on Domain)
+# Virtuals-Launch-Hunter Deployment Guide (Backend on Server, Frontend on Domain)
 
 This guide covers two production patterns:
 
@@ -12,6 +12,29 @@ This guide covers two production patterns:
 The project now supports:
 - Configurable frontend API base (meta tag `vpulse-api-base` in `dashboard.html`)
 - Configurable backend CORS allowlist (`CORS_ALLOW_ORIGINS` in `config.json`)
+
+## 0. One-click installer (Ubuntu 22.04, same-domain mode)
+
+For domain `vps.licheng.website` style deployment:
+
+```bash
+cd /opt/vpulse
+chmod +x deploy/install_ubuntu22_oneclick.sh
+DOMAIN=vps.licheng.website \
+LETSENCRYPT_EMAIL=you@example.com \
+WS_RPC_URL=wss://... \
+HTTP_RPC_URL=https://... \
+BACKFILL_HTTP_RPC_URL=https://... \
+bash deploy/install_ubuntu22_oneclick.sh
+```
+
+The script will:
+- install system packages and Python deps
+- generate/update `config.json`
+- set frontend API base to `/api`
+- install `systemd` services (`writer/realtime/backfill`)
+- install Nginx same-domain reverse proxy
+- try HTTPS via Certbot (if `LETSENCRYPT_EMAIL` provided)
 
 ## 1. Server prerequisites
 
@@ -176,4 +199,3 @@ sudo systemctl restart vpulse@writer vpulse@realtime vpulse@backfill
 cp /opt/vpulse/dashboard.html /var/www/vpulse/dashboard.html
 sudo systemctl reload nginx
 ```
-

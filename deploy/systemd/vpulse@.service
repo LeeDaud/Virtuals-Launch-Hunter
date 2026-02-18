@@ -1,5 +1,5 @@
 [Unit]
-Description=V-Pulse role %i
+Description=Virtuals-Launch-Hunter role %i
 After=network-online.target
 Wants=network-online.target
 
@@ -17,4 +17,3 @@ Environment=PYTHONUNBUFFERED=1
 
 [Install]
 WantedBy=multi-user.target
-

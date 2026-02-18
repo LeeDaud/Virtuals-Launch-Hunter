@@ -3292,7 +3292,9 @@ async def main_async(config_path: str, role: str) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="V-Pulse monitor v3.1.0 split-role runtime")
+    parser = argparse.ArgumentParser(
+        description="Virtuals-Launch-Hunter v1.0 split-role runtime"
+    )
     parser.add_argument(
         "--config",
         default="./config.json",

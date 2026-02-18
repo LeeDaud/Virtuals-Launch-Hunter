@@ -1,6 +1,6 @@
-# V-Pulse 盘面雷达（V3.1.0）
+# Virtuals-Launch-Hunter（v1.0）
 
-V-Pulse 是一个面向 Base 链的实时监控与回扫分析工具，支持三进程低延迟架构（writer/realtime/backfill），用于观察项目盘面、买家行为、分钟消耗与钱包持仓。
+Virtuals-Launch-Hunter 是一个面向 Base 链的实时监控与回扫分析工具，支持三进程低延迟架构（writer/realtime/backfill），用于观察项目盘面、买家行为、分钟消耗与钱包持仓。
 
 ## 功能总览
 - 实时监听：WS 新块/日志监听，快速捕捉交易。
@@ -13,7 +13,7 @@ V-Pulse 是一个面向 Base 链的实时监控与回扫分析工具，支持三
   - 大户榜
   - 我的钱包持仓
   - 交易录入延迟
-  - 项目累计税收(V)（V3.1.0 新增）
+  - 项目累计税收(V)
 
 ## 架构说明（三进程）
 - `writer`：唯一写库进程，同时提供 API/UI。
@@ -30,8 +30,8 @@ V-Pulse 是一个面向 Base 链的实时监控与回扫分析工具，支持三
 - `requirements.txt`：依赖
 - `start_3roles.ps1`：一键启动三进程
 - `stop_3roles.ps1`：一键停止三进程
-- `RELEASE_v3.1.0_更新说明.md`：本版本更新日志
-- `RELEASE_v3.1.0_使用说明.md`：详细使用教程
+- `RELEASE_v3.1.0_更新说明.md`：历史版本更新日志
+- `RELEASE_v3.1.0_使用说明.md`：历史版本使用教程
 - `需求文档_v3.0.0.md`：需求说明模板
 
 ## 环境要求
@@ -76,6 +76,7 @@ python virtuals_bot.py --config .\config.json --role backfill
 
 ## 服务器部署（前后端分离/同域）
 - 详细部署文档：`deploy/README_DEPLOY.md`
+- 一键安装脚本（Ubuntu22.04，同域 `/api` 反代）：`deploy/install_ubuntu22_oneclick.sh`
 - systemd 模板：`deploy/systemd/vpulse@.service`
 - Nginx 配置示例：
   - 分域：`deploy/nginx/vpulse-split-app.conf` + `deploy/nginx/vpulse-split-api.conf`
@@ -91,7 +92,7 @@ python virtuals_bot.py --config .\config.json --role backfill
 - `GET /leaderboard`：大户榜
 - `GET /mywallets`：我的钱包
 - `GET /event-delays`：录入延迟
-- `GET /project-tax`：项目累计税收（V3.1.0）
+- `GET /project-tax`：项目累计税收
 - `POST /scan-range`：发起区间回扫
 - `POST /scan-jobs/{job_id}/cancel`：取消回扫任务
 
