@@ -1,4 +1,4 @@
-# Virtuals-Launch-Hunter（v1.0）
+# Virtuals-Launch-Hunter
 
 Virtuals-Launch-Hunter 是一个面向 Base 链的实时监控与回扫分析工具，支持三进程低延迟架构（writer/realtime/backfill），用于观察项目盘面、买家行为、分钟消耗与钱包持仓。
 

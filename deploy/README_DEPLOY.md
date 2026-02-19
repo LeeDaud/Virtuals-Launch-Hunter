@@ -190,6 +190,38 @@ For same-domain, only request the single domain certificate.
 
 ## 10. Upgrade process
 
+### 10.1 One-click update script (recommended)
+
+Use:
+
+```bash
+cd /opt/vpulse
+chmod +x deploy/update_server_oneclick.sh
+bash deploy/update_server_oneclick.sh
+```
+
+Common options:
+
+```bash
+# Pull from a specific branch
+BRANCH=main bash deploy/update_server_oneclick.sh
+
+# Keep same-domain /api in dashboard meta after each pull
+FRONTEND_API_BASE=/api bash deploy/update_server_oneclick.sh
+
+# Skip pip install when Python deps did not change
+SKIP_PIP=1 bash deploy/update_server_oneclick.sh
+```
+
+Default actions:
+1. `git pull --rebase --autostash`
+2. update Python deps from `requirements.txt`
+3. publish `dashboard.html` and `favicon-vpulse.svg` to `/var/www/vpulse`
+4. restart `vpulse@writer`, `vpulse@realtime`, `vpulse@backfill`
+5. `nginx -t` and reload nginx
+
+### 10.2 Manual fallback
+
 ```bash
 cd /opt/vpulse
 git pull
