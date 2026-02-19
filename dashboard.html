@@ -183,8 +183,7 @@
 
     .pill,
     .pill-input,
-    .field input,
-    select.pill {
+    .field input {
       height: 36px;
       border-radius: var(--r-ctl);
       border: 1px solid rgba(204, 214, 232, 0.22);
@@ -256,16 +255,131 @@
       min-width: 165px;
     }
 
+    .project-dropdown {
+      position: relative;
+      min-width: 160px;
+    }
+
+    .project-dropdown-trigger {
+      width: 100%;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 0 12px;
+      border-color: rgba(170, 187, 214, 0.28);
+      background: linear-gradient(180deg, rgba(20, 29, 43, 0.92), rgba(13, 20, 32, 0.9));
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+    }
+
+    .project-dropdown-label {
+      display: block;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      text-align: left;
+      color: rgba(236, 242, 251, 0.94);
+      letter-spacing: 0.2px;
+    }
+
+    .project-dropdown-arrow {
+      width: 8px;
+      height: 8px;
+      border-right: 1.6px solid rgba(192, 208, 233, 0.86);
+      border-bottom: 1.6px solid rgba(192, 208, 233, 0.86);
+      transform: rotate(45deg) translateY(-1px);
+      transition: transform 170ms ease-out, border-color 170ms ease-out;
+      flex-shrink: 0;
+    }
+
+    .project-dropdown.is-open .project-dropdown-arrow {
+      transform: rotate(-135deg) translateY(-1px);
+    }
+
+    .project-dropdown-trigger:hover {
+      border-color: rgba(161, 181, 214, 0.62);
+      background: linear-gradient(180deg, rgba(27, 39, 56, 0.96), rgba(16, 25, 39, 0.94));
+      box-shadow: 0 0 0 1px rgba(111, 139, 182, 0.22), 0 8px 18px rgba(6, 11, 18, 0.58);
+      transform: translateY(-1px);
+    }
+
+    .project-dropdown .project-dropdown-trigger:focus-visible {
+      outline: none;
+      border-color: rgba(167, 189, 222, 0.75);
+      box-shadow: 0 0 0 3px rgba(118, 146, 187, 0.26), 0 0 18px rgba(97, 124, 164, 0.2);
+    }
+
+    .project-dropdown-menu {
+      position: absolute;
+      top: calc(100% + 8px);
+      left: 0;
+      width: 100%;
+      min-width: 170px;
+      padding: 6px;
+      border-radius: var(--r-ctl);
+      border: 1px solid rgba(160, 178, 209, 0.25);
+      background: linear-gradient(180deg, rgba(17, 25, 38, 0.94), rgba(10, 16, 27, 0.93));
+      box-shadow: 0 18px 38px rgba(4, 9, 18, 0.62);
+      backdrop-filter: blur(10px);
+      opacity: 0;
+      transform: translateY(-6px);
+      pointer-events: none;
+      transition: opacity 170ms ease-out, transform 170ms ease-out;
+      z-index: 26;
+    }
+
+    .project-dropdown.is-open .project-dropdown-menu {
+      opacity: 1;
+      transform: translateY(0);
+      pointer-events: auto;
+    }
+
+    .project-dropdown-option {
+      width: 100%;
+      border: 0;
+      border-radius: 9px;
+      background: transparent;
+      color: rgba(224, 235, 251, 0.9);
+      text-align: left;
+      padding: 8px 10px;
+      font-family: var(--sans);
+      font-size: 12px;
+      font-weight: 500;
+      letter-spacing: 0.2px;
+      cursor: pointer;
+      transition: background-color 160ms ease-out, color 160ms ease-out;
+    }
+
+    .project-dropdown-option:hover {
+      background: rgba(110, 133, 167, 0.2);
+      color: #eef4ff;
+    }
+
+    .project-dropdown-option.is-selected {
+      background: rgba(185, 204, 235, 0.85);
+      color: #122033;
+    }
+
+    .project-dropdown-option.is-selected:hover {
+      background: rgba(185, 204, 235, 0.92);
+      color: #122033;
+    }
+
+    .project-native-select {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      pointer-events: none;
+      opacity: 0;
+      left: 0;
+      top: 0;
+    }
+
     .pill:focus-visible,
     .pill-input:focus-visible,
     .field input:focus-visible {
       outline: none;
       border-color: rgba(201, 255, 107, 0.8);
       box-shadow: 0 0 0 3px rgba(201, 255, 107, 0.22);
-    }
-
-    select.pill {
-      padding: 0 28px 0 12px;
     }
 
     .grid-4 {
@@ -709,7 +823,7 @@
 
       .pill,
       .pill-input,
-      select.pill {
+      .project-dropdown {
         min-width: 100%;
       }
 
@@ -730,7 +844,26 @@
         </div>
       </div>
       <div class="controls">
-        <select id="projectSelect" class="pill"></select>
+        <div id="projectDropdown" class="project-dropdown">
+          <button
+            id="projectDropdownTrigger"
+            type="button"
+            class="pill project-dropdown-trigger"
+            aria-haspopup="listbox"
+            aria-expanded="false"
+          >
+            <span id="projectDropdownLabel" class="project-dropdown-label">-</span>
+            <span class="project-dropdown-arrow" aria-hidden="true"></span>
+          </button>
+          <div
+            id="projectDropdownMenu"
+            class="project-dropdown-menu"
+            role="listbox"
+            aria-hidden="true"
+            aria-label="项目切换"
+          ></div>
+          <select id="projectSelect" class="project-native-select" tabindex="-1" aria-hidden="true"></select>
+        </div>
         <input id="scanStartUtc8" type="datetime-local" class="pill-input" />
         <input id="scanEndUtc8" type="datetime-local" class="pill-input" />
         <button id="scanRangeBtn" class="pill">按区间回扫(UTC+8)</button>
@@ -903,6 +1036,10 @@
   <div id="hoverTip" class="hover-tip" aria-hidden="true"></div>
 
   <script>
+    const projectDropdown = document.getElementById("projectDropdown");
+    const projectDropdownTrigger = document.getElementById("projectDropdownTrigger");
+    const projectDropdownLabel = document.getElementById("projectDropdownLabel");
+    const projectDropdownMenu = document.getElementById("projectDropdownMenu");
     const projectSelect = document.getElementById("projectSelect");
     const scanStartUtc8 = document.getElementById("scanStartUtc8");
     const scanEndUtc8 = document.getElementById("scanEndUtc8");
@@ -973,6 +1110,7 @@
     let monitoredWallets = [];
     let launchConfigRowsCache = [];
     let currentDbBatchSize = null;
+    let projectDropdownOpen = false;
     const apiBaseMeta = document.querySelector('meta[name="vpulse-api-base"]');
     const API_BASE_URL = String(apiBaseMeta?.getAttribute("content") || "")
       .trim()
@@ -1293,6 +1431,99 @@
       }
     }
 
+    function setProjectDropdownOpen(open, { focusTrigger = false } = {}) {
+      projectDropdownOpen = Boolean(open);
+      projectDropdown.classList.toggle("is-open", projectDropdownOpen);
+      projectDropdownTrigger.setAttribute("aria-expanded", projectDropdownOpen ? "true" : "false");
+      projectDropdownMenu.setAttribute("aria-hidden", projectDropdownOpen ? "false" : "true");
+      if (!projectDropdownOpen && focusTrigger) {
+        projectDropdownTrigger.focus();
+      }
+    }
+
+    function syncProjectDropdownLabel() {
+      const selected = projectSelect.selectedOptions && projectSelect.selectedOptions[0];
+      const fallback = projectSelect.options && projectSelect.options.length ? projectSelect.options[0] : null;
+      const label = (selected || fallback)?.textContent || (selected || fallback)?.value || "-";
+      projectDropdownLabel.textContent = label;
+      projectDropdownTrigger.disabled = projectSelect.options.length === 0;
+    }
+
+    function renderProjectDropdownOptions() {
+      projectDropdownMenu.innerHTML = "";
+      const options = [...projectSelect.options];
+      if (!options.length) {
+        const empty = document.createElement("div");
+        empty.className = "muted";
+        empty.style.padding = "8px 10px";
+        empty.textContent = "暂无项目";
+        projectDropdownMenu.appendChild(empty);
+        return;
+      }
+      options.forEach((opt) => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "project-dropdown-option";
+        btn.setAttribute("role", "option");
+        btn.textContent = opt.textContent || opt.value;
+        if (opt.value === projectSelect.value) {
+          btn.classList.add("is-selected");
+          btn.setAttribute("aria-selected", "true");
+        } else {
+          btn.setAttribute("aria-selected", "false");
+        }
+        btn.addEventListener("click", () => {
+          if (projectSelect.value === opt.value) {
+            setProjectDropdownOpen(false, { focusTrigger: true });
+            return;
+          }
+          projectSelect.value = opt.value;
+          projectSelect.dispatchEvent(new Event("change", { bubbles: true }));
+          setProjectDropdownOpen(false, { focusTrigger: true });
+        });
+        projectDropdownMenu.appendChild(btn);
+      });
+    }
+
+    function syncProjectDropdownUi() {
+      syncProjectDropdownLabel();
+      renderProjectDropdownOptions();
+    }
+
+    function initProjectDropdown() {
+      projectDropdownTrigger.addEventListener("click", () => {
+        if (projectDropdownTrigger.disabled) return;
+        setProjectDropdownOpen(!projectDropdownOpen);
+      });
+      projectDropdownTrigger.addEventListener("keydown", (ev) => {
+        if (projectDropdownTrigger.disabled) return;
+        if (ev.key === "Enter" || ev.key === " " || ev.key === "ArrowDown") {
+          ev.preventDefault();
+          setProjectDropdownOpen(true);
+          return;
+        }
+        if (ev.key === "Escape") {
+          ev.preventDefault();
+          setProjectDropdownOpen(false);
+        }
+      });
+      projectDropdownMenu.addEventListener("keydown", (ev) => {
+        if (ev.key === "Escape") {
+          ev.preventDefault();
+          setProjectDropdownOpen(false, { focusTrigger: true });
+        }
+      });
+      document.addEventListener("pointerdown", (ev) => {
+        if (!projectDropdownOpen) return;
+        if (projectDropdown.contains(ev.target)) return;
+        setProjectDropdownOpen(false);
+      });
+      window.addEventListener("blur", () => {
+        setProjectDropdownOpen(false);
+      });
+      syncProjectDropdownUi();
+    }
+
     function setDbBatchSizeUi(value) {
       const n = Math.max(1, Math.min(100, Number(value) || 1));
       currentDbBatchSize = n;
@@ -1406,6 +1637,7 @@
       } else if (meta.projects && meta.projects.length) {
         projectSelect.value = meta.projects[0];
       }
+      syncProjectDropdownUi();
       saveSelectedProject(projectSelect.value);
       if (meta.fixedDefaults) {
         fixedInfo.innerHTML =
@@ -1562,6 +1794,7 @@
       await loadMeta();
       if (payload.name && [...projectSelect.options].some(o => o.value === payload.name)) {
         projectSelect.value = payload.name;
+        syncProjectDropdownUi();
         saveSelectedProject(projectSelect.value);
       }
       launchConfigRowsCache = data.items || [];
@@ -1588,6 +1821,7 @@
       if (![...projectSelect.options].some(o => o.value === projectSelect.value) && projectSelect.options.length > 0) {
         projectSelect.value = projectSelect.options[0].value;
       }
+      syncProjectDropdownUi();
       saveSelectedProject(projectSelect.value);
       syncLaunchFormToSelectedProject(projectSelect.value);
       await refreshAllSafe();
@@ -2008,6 +2242,7 @@
 
     async function boot() {
       try {
+        initProjectDropdown();
         initScanInputsIfEmpty();
         initMinuteInputsIfEmpty();
         await loadMeta();
@@ -2189,6 +2424,8 @@
       ).catch(console.error);
     });
     projectSelect.addEventListener("change", () => {
+      syncProjectDropdownUi();
+      setProjectDropdownOpen(false);
       saveSelectedProject(projectSelect.value);
       syncLaunchFormToSelectedProject(projectSelect.value);
       refreshAllSafe().catch(console.error);
