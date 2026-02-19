@@ -8,14 +8,14 @@ set -euo pipefail
 #   bash deploy/update_server_oneclick.sh
 #
 # Common overrides:
-#   BRANCH=main SERVICE_PREFIX=vpulse WEB_DIR=/var/www/vpulse bash deploy/update_server_oneclick.sh
+#   BRANCH=main SERVICE_PREFIX=virtuals-launch-hunter WEB_DIR=/var/www/virtuals-launch-hunter bash deploy/update_server_oneclick.sh
 #   FRONTEND_API_BASE=/api bash deploy/update_server_oneclick.sh
 #   SKIP_PIP=1 bash deploy/update_server_oneclick.sh
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 APP_DIR="${APP_DIR:-$ROOT_DIR}"
-WEB_DIR="${WEB_DIR:-/var/www/vpulse}"
-SERVICE_PREFIX="${SERVICE_PREFIX:-vpulse}"
+WEB_DIR="${WEB_DIR:-}"
+SERVICE_PREFIX="${SERVICE_PREFIX:-}"
 SERVICE_ROLES="${SERVICE_ROLES:-writer realtime backfill}"
 REMOTE="${REMOTE:-origin}"
 BRANCH="${BRANCH:-}"
@@ -24,22 +24,64 @@ FRONTEND_API_BASE="${FRONTEND_API_BASE:-}"
 SKIP_PIP="${SKIP_PIP:-0}"
 SKIP_FRONTEND="${SKIP_FRONTEND:-0}"
 SKIP_NGINX="${SKIP_NGINX:-0}"
+LOG_TAG="${LOG_TAG:-virtuals-launch-hunter-update}"
 
 log() {
-  echo "[vpulse-update] $*"
+  echo "[$LOG_TAG] $*"
 }
 
 warn() {
-  echo "[vpulse-update][WARN] $*" >&2
+  echo "[$LOG_TAG][WARN] $*" >&2
 }
 
 die() {
-  echo "[vpulse-update][ERROR] $*" >&2
+  echo "[$LOG_TAG][ERROR] $*" >&2
   exit 1
 }
 
 need_cmd() {
   command -v "$1" >/dev/null 2>&1 || die "missing command: $1"
+}
+
+service_prefix_exists() {
+  local prefix="$1"
+  systemctl is-enabled "${prefix}@writer" >/dev/null 2>&1 && return 0
+  systemctl is-active "${prefix}@writer" >/dev/null 2>&1 && return 0
+  systemctl list-unit-files --type=service --no-legend "${prefix}@.service" 2>/dev/null \
+    | grep -q "${prefix}@.service" && return 0
+  return 1
+}
+
+resolve_service_prefix() {
+  if [[ -n "$SERVICE_PREFIX" ]]; then
+    echo "$SERVICE_PREFIX"
+    return 0
+  fi
+  if service_prefix_exists "virtuals-launch-hunter"; then
+    echo "virtuals-launch-hunter"
+    return 0
+  fi
+  if service_prefix_exists "vpulse"; then
+    echo "vpulse"
+    return 0
+  fi
+  echo "virtuals-launch-hunter"
+}
+
+resolve_web_dir() {
+  if [[ -n "$WEB_DIR" ]]; then
+    echo "$WEB_DIR"
+    return 0
+  fi
+  if [[ -d /var/www/virtuals-launch-hunter ]]; then
+    echo "/var/www/virtuals-launch-hunter"
+    return 0
+  fi
+  if [[ -d /var/www/vpulse ]]; then
+    echo "/var/www/vpulse"
+    return 0
+  fi
+  echo "/var/www/virtuals-launch-hunter"
 }
 
 run_root() {
@@ -155,7 +197,7 @@ restart_services() {
   for role in $SERVICE_ROLES; do
     units+=("${SERVICE_PREFIX}@${role}")
   done
-  log "Restarting services: ${units[*]}"
+  log "Restarting role services"
   run_root systemctl daemon-reload
   run_root systemctl restart "${units[@]}"
 }
@@ -177,6 +219,8 @@ reload_nginx() {
 main() {
   need_cmd git
   need_cmd "$PYTHON_BIN"
+  WEB_DIR="$(resolve_web_dir)"
+  SERVICE_PREFIX="$(resolve_service_prefix)"
   cd "$APP_DIR"
   update_code
   update_python_deps

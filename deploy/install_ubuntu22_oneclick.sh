@@ -14,8 +14,8 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 APP_DIR="${APP_DIR:-$ROOT_DIR}"
-WEB_DIR="${WEB_DIR:-/var/www/vpulse}"
-SERVICE_PREFIX="${SERVICE_PREFIX:-vpulse}"
+WEB_DIR="${WEB_DIR:-/var/www/virtuals-launch-hunter}"
+SERVICE_PREFIX="${SERVICE_PREFIX:-virtuals-launch-hunter}"
 DOMAIN="${DOMAIN:-vps.licheng.website}"
 ENABLE_HTTPS="${ENABLE_HTTPS:-1}"
 
@@ -27,15 +27,15 @@ DASHBOARD_FILE="$APP_DIR/dashboard.html"
 FAVICON_FILE="$APP_DIR/favicon-vpulse.svg"
 
 log() {
-  echo "[vpulse-install] $*"
+  echo "[virtuals-launch-hunter-install] $*"
 }
 
 warn() {
-  echo "[vpulse-install][WARN] $*" >&2
+  echo "[virtuals-launch-hunter-install][WARN] $*" >&2
 }
 
 die() {
-  echo "[vpulse-install][ERROR] $*" >&2
+  echo "[virtuals-launch-hunter-install][ERROR] $*" >&2
   exit 1
 }
 

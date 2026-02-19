@@ -18,7 +18,7 @@ The project now supports:
 For domain `vps.licheng.website` style deployment:
 
 ```bash
-cd /opt/vpulse
+cd /opt/virtuals-launch-hunter
 chmod +x deploy/install_ubuntu22_oneclick.sh
 DOMAIN=vps.licheng.website \
 LETSENCRYPT_EMAIL=you@example.com \
@@ -52,32 +52,33 @@ Open firewall ports (if enabled):
 ## 2. Project layout on server
 
 Recommended paths:
-- App code: `/opt/vpulse`
-- Frontend static files: `/var/www/vpulse`
+- App code: `/opt/virtuals-launch-hunter`
+- Frontend static files: `/var/www/virtuals-launch-hunter`
 
 ```bash
-sudo mkdir -p /opt/vpulse /var/www/vpulse
-sudo chown -R $USER:$USER /opt/vpulse /var/www/vpulse
+sudo mkdir -p /opt/virtuals-launch-hunter /var/www/virtuals-launch-hunter
+sudo chown -R $USER:$USER /opt/virtuals-launch-hunter /var/www/virtuals-launch-hunter
 ```
 
-Upload or clone this repository into `/opt/vpulse`.
+Upload or clone this repository into `/opt/virtuals-launch-hunter`.
+If you already use legacy paths (`/opt/vpulse`, `/var/www/vpulse`), you can keep them.
 
 ## 3. Python environment
 
 ```bash
-cd /opt/vpulse
+cd /opt/virtuals-launch-hunter
 python3 -m venv .venv
 source .venv/bin/activate
 pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-## 4. Backend config (`/opt/vpulse/config.json`)
+## 4. Backend config (`/opt/virtuals-launch-hunter/config.json`)
 
 Start from template:
 
 ```bash
-cp /opt/vpulse/config.example.json /opt/vpulse/config.json
+cp /opt/virtuals-launch-hunter/config.example.json /opt/virtuals-launch-hunter/config.json
 ```
 
 Edit required RPC/project values first, then set deployment-related fields:
@@ -97,18 +98,20 @@ Use the template unit:
 Install:
 
 ```bash
-sudo cp /opt/vpulse/deploy/systemd/vpulse@.service /etc/systemd/system/
+SERVICE_PREFIX=virtuals-launch-hunter
+sudo cp /opt/virtuals-launch-hunter/deploy/systemd/vpulse@.service /etc/systemd/system/${SERVICE_PREFIX}@.service
 sudo systemctl daemon-reload
-sudo systemctl enable --now vpulse@writer vpulse@realtime vpulse@backfill
+sudo systemctl enable --now ${SERVICE_PREFIX}@writer ${SERVICE_PREFIX}@realtime ${SERVICE_PREFIX}@backfill
 ```
 
 Check status/logs:
 
 ```bash
-sudo systemctl status vpulse@writer
-sudo systemctl status vpulse@realtime
-sudo systemctl status vpulse@backfill
-sudo journalctl -u vpulse@writer -f
+SERVICE_PREFIX=virtuals-launch-hunter
+sudo systemctl status ${SERVICE_PREFIX}@writer
+sudo systemctl status ${SERVICE_PREFIX}@realtime
+sudo systemctl status ${SERVICE_PREFIX}@backfill
+sudo journalctl -u ${SERVICE_PREFIX}@writer -f
 ```
 
 ## 6. Frontend files
@@ -116,8 +119,8 @@ sudo journalctl -u vpulse@writer -f
 Copy frontend assets:
 
 ```bash
-cp /opt/vpulse/dashboard.html /var/www/vpulse/dashboard.html
-cp /opt/vpulse/favicon-vpulse.svg /var/www/vpulse/favicon-vpulse.svg
+cp /opt/virtuals-launch-hunter/dashboard.html /var/www/virtuals-launch-hunter/dashboard.html
+cp /opt/virtuals-launch-hunter/favicon-vpulse.svg /var/www/virtuals-launch-hunter/favicon-vpulse.svg
 ```
 
 Set API base in `dashboard.html` by editing:
@@ -144,8 +147,8 @@ Use:
 Install:
 
 ```bash
-sudo cp /opt/vpulse/deploy/nginx/vpulse-split-app.conf /etc/nginx/sites-available/vpulse-split-app.conf
-sudo cp /opt/vpulse/deploy/nginx/vpulse-split-api.conf /etc/nginx/sites-available/vpulse-split-api.conf
+sudo cp /opt/virtuals-launch-hunter/deploy/nginx/vpulse-split-app.conf /etc/nginx/sites-available/vpulse-split-app.conf
+sudo cp /opt/virtuals-launch-hunter/deploy/nginx/vpulse-split-api.conf /etc/nginx/sites-available/vpulse-split-api.conf
 sudo ln -s /etc/nginx/sites-available/vpulse-split-app.conf /etc/nginx/sites-enabled/
 sudo ln -s /etc/nginx/sites-available/vpulse-split-api.conf /etc/nginx/sites-enabled/
 sudo nginx -t
@@ -160,7 +163,7 @@ Use:
 Install:
 
 ```bash
-sudo cp /opt/vpulse/deploy/nginx/vpulse-same-domain.conf /etc/nginx/sites-available/vpulse-same-domain.conf
+sudo cp /opt/virtuals-launch-hunter/deploy/nginx/vpulse-same-domain.conf /etc/nginx/sites-available/vpulse-same-domain.conf
 sudo ln -s /etc/nginx/sites-available/vpulse-same-domain.conf /etc/nginx/sites-enabled/
 sudo nginx -t
 sudo systemctl reload nginx
@@ -195,7 +198,7 @@ For same-domain, only request the single domain certificate.
 Use:
 
 ```bash
-cd /opt/vpulse
+cd /opt/virtuals-launch-hunter
 chmod +x deploy/update_server_oneclick.sh
 bash deploy/update_server_oneclick.sh
 ```
@@ -205,6 +208,9 @@ Common options:
 ```bash
 # Pull from a specific branch
 BRANCH=main bash deploy/update_server_oneclick.sh
+
+# Override service prefix for existing old installations
+SERVICE_PREFIX=vpulse bash deploy/update_server_oneclick.sh
 
 # Keep same-domain /api in dashboard meta after each pull
 FRONTEND_API_BASE=/api bash deploy/update_server_oneclick.sh
@@ -216,18 +222,35 @@ SKIP_PIP=1 bash deploy/update_server_oneclick.sh
 Default actions:
 1. `git pull --rebase --autostash`
 2. update Python deps from `requirements.txt`
-3. publish `dashboard.html` and `favicon-vpulse.svg` to `/var/www/vpulse`
-4. restart `vpulse@writer`, `vpulse@realtime`, `vpulse@backfill`
+3. publish `dashboard.html` and `favicon-vpulse.svg` to the detected web root
+4. restart `${SERVICE_PREFIX}@writer`, `${SERVICE_PREFIX}@realtime`, `${SERVICE_PREFIX}@backfill`
 5. `nginx -t` and reload nginx
 
-### 10.2 Manual fallback
+### 10.2 Migrate systemd service names (legacy `vpulse` -> new prefix)
 
 ```bash
-cd /opt/vpulse
+cd /opt/virtuals-launch-hunter
+chmod +x deploy/migrate_service_prefix.sh
+OLD_PREFIX=vpulse NEW_PREFIX=virtuals-launch-hunter bash deploy/migrate_service_prefix.sh
+```
+
+Verify:
+
+```bash
+systemctl is-active virtuals-launch-hunter@writer virtuals-launch-hunter@realtime virtuals-launch-hunter@backfill
+systemctl is-enabled virtuals-launch-hunter@writer virtuals-launch-hunter@realtime virtuals-launch-hunter@backfill
+```
+
+### 10.3 Manual fallback
+
+```bash
+cd /opt/virtuals-launch-hunter
+SERVICE_PREFIX=virtuals-launch-hunter   # legacy deployments may still use: vpulse
+WEB_DIR=/var/www/virtuals-launch-hunter # legacy deployments may still use: /var/www/vpulse
 git pull
 source .venv/bin/activate
 pip install -r requirements.txt
-sudo systemctl restart vpulse@writer vpulse@realtime vpulse@backfill
-cp /opt/vpulse/dashboard.html /var/www/vpulse/dashboard.html
+sudo systemctl restart ${SERVICE_PREFIX}@writer ${SERVICE_PREFIX}@realtime ${SERVICE_PREFIX}@backfill
+cp /opt/virtuals-launch-hunter/dashboard.html ${WEB_DIR}/dashboard.html
 sudo systemctl reload nginx
 ```
