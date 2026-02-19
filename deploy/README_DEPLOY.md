@@ -121,6 +121,9 @@ Copy frontend assets:
 ```bash
 cp /opt/virtuals-launch-hunter/dashboard.html /var/www/virtuals-launch-hunter/dashboard.html
 cp /opt/virtuals-launch-hunter/favicon-vpulse.svg /var/www/virtuals-launch-hunter/favicon-vpulse.svg
+mkdir -p /var/www/virtuals-launch-hunter/favicon
+cp -r /opt/virtuals-launch-hunter/favicon/. /var/www/virtuals-launch-hunter/favicon/
+cp /opt/virtuals-launch-hunter/favicon/favicon.ico /var/www/virtuals-launch-hunter/favicon.ico
 ```
 
 Set API base in `dashboard.html` by editing:
@@ -252,5 +255,8 @@ source .venv/bin/activate
 pip install -r requirements.txt
 sudo systemctl restart ${SERVICE_PREFIX}@writer ${SERVICE_PREFIX}@realtime ${SERVICE_PREFIX}@backfill
 cp /opt/virtuals-launch-hunter/dashboard.html ${WEB_DIR}/dashboard.html
+mkdir -p ${WEB_DIR}/favicon
+cp -r /opt/virtuals-launch-hunter/favicon/. ${WEB_DIR}/favicon/
+cp /opt/virtuals-launch-hunter/favicon/favicon.ico ${WEB_DIR}/favicon.ico
 sudo systemctl reload nginx
 ```

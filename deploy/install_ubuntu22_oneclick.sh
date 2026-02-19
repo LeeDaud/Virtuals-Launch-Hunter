@@ -169,6 +169,13 @@ publish_frontend() {
   sudo mkdir -p "$WEB_DIR"
   sudo cp "$DASHBOARD_FILE" "$WEB_DIR/dashboard.html"
   sudo cp "$FAVICON_FILE" "$WEB_DIR/favicon-vpulse.svg"
+  if [[ -d "$APP_DIR/favicon" ]]; then
+    sudo mkdir -p "$WEB_DIR/favicon"
+    sudo cp -r "$APP_DIR/favicon/." "$WEB_DIR/favicon/"
+    if [[ -f "$APP_DIR/favicon/favicon.ico" ]]; then
+      sudo cp "$APP_DIR/favicon/favicon.ico" "$WEB_DIR/favicon.ico"
+    fi
+  fi
 }
 
 install_systemd_service() {

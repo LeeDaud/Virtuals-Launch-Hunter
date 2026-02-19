@@ -188,6 +188,13 @@ publish_frontend() {
   run_root mkdir -p "$WEB_DIR"
   run_root cp "$tmp_dashboard" "$WEB_DIR/dashboard.html"
   run_root cp "$APP_DIR/favicon-vpulse.svg" "$WEB_DIR/favicon-vpulse.svg"
+  if [[ -d "$APP_DIR/favicon" ]]; then
+    run_root mkdir -p "$WEB_DIR/favicon"
+    run_root cp -r "$APP_DIR/favicon/." "$WEB_DIR/favicon/"
+    if [[ -f "$APP_DIR/favicon/favicon.ico" ]]; then
+      run_root cp "$APP_DIR/favicon/favicon.ico" "$WEB_DIR/favicon.ico"
+    fi
+  fi
   rm -f "$tmp_dashboard"
 }
 

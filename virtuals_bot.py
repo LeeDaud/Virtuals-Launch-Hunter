@@ -3073,6 +3073,12 @@ class VirtualsBot:
     async def favicon_handler(self, request: web.Request) -> web.Response:
         return web.FileResponse(self.base_dir / "favicon-vpulse.svg")
 
+    async def favicon_ico_handler(self, request: web.Request) -> web.Response:
+        favicon_ico = self.base_dir / "favicon" / "favicon.ico"
+        if favicon_ico.is_file():
+            return web.FileResponse(favicon_ico)
+        return web.FileResponse(self.base_dir / "favicon-vpulse.svg")
+
     async def wallets_handler(self, request: web.Request) -> web.Response:
         project = request.query.get("project")
         project = str(project).strip() if project else None
@@ -3189,6 +3195,10 @@ class VirtualsBot:
         app = web.Application(middlewares=middlewares)
         app.router.add_get("/", self.dashboard_handler)
         app.router.add_get("/favicon-vpulse.svg", self.favicon_handler)
+        app.router.add_get("/favicon.ico", self.favicon_ico_handler)
+        favicon_dir = self.base_dir / "favicon"
+        if favicon_dir.is_dir():
+            app.router.add_static("/favicon/", path=str(favicon_dir), show_index=False)
         app.router.add_get("/meta", self.meta_handler)
         app.router.add_get("/launch-configs", self.launch_configs_handler)
         app.router.add_post("/launch-configs", self.launch_config_upsert_handler)
