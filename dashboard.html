@@ -873,6 +873,7 @@
         <button id="scanRangeBtn" class="pill">按区间回扫(UTC+8)</button>
         <button id="scanCancelBtn" class="pill" disabled>取消回扫</button>
         <button id="refreshBtn" class="pill">刷新</button>
+        <button id="runtimePauseBtn" class="pill">采集开关：加载中...</button>
         <button id="fastModeBtn" class="pill">极速模式：关(0.5s)</button>
         <button id="superModeBtn" class="pill">超速模式：关(0.25s)</button>
         <span id="refreshMessage" class="hint">-</span>
@@ -1054,6 +1055,7 @@
     const minuteRangeBtn = document.getElementById("minuteRangeBtn");
     const minuteRangeMessage = document.getElementById("minuteRangeMessage");
     const refreshBtn = document.getElementById("refreshBtn");
+    const runtimePauseBtn = document.getElementById("runtimePauseBtn");
     const fastModeBtn = document.getElementById("fastModeBtn");
     const superModeBtn = document.getElementById("superModeBtn");
     const refreshMessage = document.getElementById("refreshMessage");
@@ -1098,6 +1100,7 @@
     const SUPER_REFRESH_MS = 250;
     const SUPER_MODE_GUARD_RATIO = 0.7;
     const SUPER_MODE_GUARD_HITS = 3;
+    const RUNTIME_HEARTBEAT_MS = 5000;
     let minuteRangeApplied = null;
     let lastChartCssWidth = "";
     let refreshInFlight = false;
@@ -1115,6 +1118,10 @@
     let launchConfigRowsCache = [];
     let currentDbBatchSize = null;
     let projectDropdownOpen = false;
+    let runtimePaused = false;
+    let runtimePauseToggleInFlight = false;
+    let runtimeHeartbeatTimer = null;
+    let runtimeHeartbeatInFlight = false;
     const apiBaseMeta = document.querySelector('meta[name="vpulse-api-base"]');
     const API_BASE_URL = String(apiBaseMeta?.getAttribute("content") || "")
       .trim()
@@ -1539,6 +1546,80 @@
       dbBatchMessage.textContent = `当前：${n}`;
     }
 
+    function stopRuntimeHeartbeatTimer() {
+      if (runtimeHeartbeatTimer) {
+        clearInterval(runtimeHeartbeatTimer);
+        runtimeHeartbeatTimer = null;
+      }
+    }
+
+    async function sendRuntimeHeartbeat() {
+      if (runtimePaused || runtimeHeartbeatInFlight) {
+        return false;
+      }
+      runtimeHeartbeatInFlight = true;
+      try {
+        const data = await requestJsonWithBody("/runtime/heartbeat", "POST", {});
+        if (typeof data.runtimePaused === "boolean") {
+          setRuntimePauseUi(Boolean(data.runtimePaused));
+        }
+        return true;
+      } catch (e) {
+        return false;
+      } finally {
+        runtimeHeartbeatInFlight = false;
+      }
+    }
+
+    function restartRuntimeHeartbeatTimer() {
+      stopRuntimeHeartbeatTimer();
+      if (runtimePaused) {
+        return;
+      }
+      sendRuntimeHeartbeat().catch(() => {});
+      runtimeHeartbeatTimer = setInterval(() => {
+        sendRuntimeHeartbeat().catch(() => {});
+      }, RUNTIME_HEARTBEAT_MS);
+    }
+
+    function pauseRuntimeOnPageExit() {
+      if (runtimePaused) {
+        return;
+      }
+      const url = buildApiUrl("/runtime/pause");
+      const body = JSON.stringify({ paused: true });
+      try {
+        if (navigator.sendBeacon) {
+          const blob = new Blob([body], { type: "application/json" });
+          navigator.sendBeacon(url, blob);
+          return;
+        }
+      } catch (e) {
+        // ignore
+      }
+      fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body,
+        keepalive: true,
+      }).catch(() => {});
+    }
+
+    function setRuntimePauseUi(paused) {
+      const prevPaused = runtimePaused;
+      runtimePaused = Boolean(paused);
+      runtimePauseBtn.classList.toggle("is-active", runtimePaused);
+      runtimePauseBtn.textContent = runtimePaused
+        ? "采集已暂停（点击恢复）"
+        : "采集运行中（点击暂停）";
+      scanRangeBtn.disabled = runtimePaused || Boolean(currentScanJobId);
+      if (runtimePaused) {
+        stopRuntimeHeartbeatTimer();
+      } else if (prevPaused || !runtimeHeartbeatTimer) {
+        restartRuntimeHeartbeatTimer();
+      }
+    }
+
     function renderMonitoredWallets(rows) {
       monitoredWallets = (rows || [])
         .map((x) => String(x || "").trim().toLowerCase())
@@ -1652,6 +1733,9 @@
       }
       if (meta.runtimeTuning && Number.isFinite(Number(meta.runtimeTuning.db_batch_size))) {
         setDbBatchSizeUi(Number(meta.runtimeTuning.db_batch_size));
+      }
+      if (meta.runtimeTuning && typeof meta.runtimeTuning.runtime_paused === "boolean") {
+        setRuntimePauseUi(Boolean(meta.runtimeTuning.runtime_paused));
       }
       renderMonitoredWallets(meta.wallets || []);
       syncLaunchFormToSelectedProject(projectSelect.value);
@@ -1896,6 +1980,25 @@
       return true;
     }
 
+    async function loadRuntimePauseState() {
+      const data = await jget("/runtime/pause");
+      setRuntimePauseUi(Boolean(data.runtimePaused));
+      return runtimePaused;
+    }
+
+    async function toggleRuntimePause() {
+      const targetPaused = !runtimePaused;
+      const data = await requestJsonWithBody("/runtime/pause", "POST", {
+        paused: targetPaused,
+      });
+      setRuntimePauseUi(Boolean(data.runtimePaused));
+      refreshMessage.textContent = runtimePaused
+        ? "采集已暂停：链上监听/回扫/价格轮询已停止"
+        : "采集已恢复：链上监听与回扫继续运行";
+      await refreshAllSafe();
+      return true;
+    }
+
     async function pollScanJob(jobId) {
       const started = Date.now();
       while (Date.now() - started < 1000 * 60 * 20) {
@@ -1944,6 +2047,7 @@
       }
       currentScanJobId = jobId;
       scanCancelBtn.disabled = false;
+      setRuntimePauseUi(runtimePaused);
       refreshMessage.textContent = `回扫任务已创建：${jobId}，开始执行...`;
       try {
         const ok = await pollScanJob(jobId);
@@ -1952,6 +2056,7 @@
         if (currentScanJobId === jobId) {
           currentScanJobId = null;
           scanCancelBtn.disabled = true;
+          setRuntimePauseUi(runtimePaused);
         }
       }
     }
@@ -2188,6 +2293,9 @@
         tasks.push(Promise.resolve({ sum_tax_v: "0" }));
       }
       const [health, wallets, minutes, leader, txDelays, projectTax] = await Promise.all(tasks);
+      if (typeof health.runtimePaused === "boolean") {
+        setRuntimePauseUi(health.runtimePaused);
+      }
 
       wsStatus.innerHTML = health.stats?.ws_connected
         ? `<span class="status ok">已连接</span>`
@@ -2259,6 +2367,11 @@
           } catch (e) {
             // ignore older backend
           }
+        }
+        try {
+          await loadRuntimePauseState();
+        } catch (e) {
+          // ignore older backend
         }
         await loadLaunchConfigs();
         await refreshAllSafe();
@@ -2373,6 +2486,8 @@
       tipMouseInside = false;
       hideHoverTip();
     });
+    window.addEventListener("pagehide", pauseRuntimeOnPageExit);
+    window.addEventListener("beforeunload", pauseRuntimeOnPageExit);
     // Keep tooltip stable even when table rows are re-rendered by high-frequency refresh.
     setInterval(() => {
       if (tipMouseInside) {
@@ -2380,6 +2495,25 @@
       }
     }, 120);
 
+    runtimePauseBtn.addEventListener("click", async () => {
+      if (runtimePauseToggleInFlight) {
+        return;
+      }
+      runtimePauseToggleInFlight = true;
+      const oldText = runtimePauseBtn.textContent;
+      runtimePauseBtn.disabled = true;
+      runtimePauseBtn.textContent = "切换中...";
+      try {
+        await toggleRuntimePause();
+      } catch (e) {
+        runtimePauseBtn.textContent = oldText;
+        refreshMessage.textContent = `切换失败：${e.message || e}`;
+      } finally {
+        runtimePauseToggleInFlight = false;
+        runtimePauseBtn.disabled = false;
+        setRuntimePauseUi(runtimePaused);
+      }
+    });
     refreshBtn.addEventListener("click", () => {
       runButtonAction(
         refreshBtn,

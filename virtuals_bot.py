@@ -10,7 +10,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation, getcontext
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 import aiohttp
 from aiohttp import web
@@ -45,6 +45,30 @@ def parse_hex_int(value: Optional[str]) -> int:
     if value is None:
         return 0
     return int(value, 16)
+
+
+def parse_bool_like(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return int(value) != 0
+    if value is None:
+        return False
+    raw = str(value).strip().lower()
+    return raw in {"1", "true", "yes", "on"}
+
+
+def parse_bool_request(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return int(value) != 0
+    raw = str(value).strip().lower()
+    if raw in {"1", "true", "yes", "on"}:
+        return True
+    if raw in {"0", "false", "no", "off"}:
+        return False
+    raise ValueError("paused must be a boolean")
 
 
 def decode_topic_address(topic: str) -> str:
@@ -339,9 +363,15 @@ class RPCClient:
 
 
 class PriceService:
-    def __init__(self, cfg: AppConfig, rpc: RPCClient):
+    def __init__(
+        self,
+        cfg: AppConfig,
+        rpc: RPCClient,
+        is_paused: Optional[Callable[[], bool]] = None,
+    ):
         self.cfg = cfg
         self.rpc = rpc
+        self._is_paused = is_paused
         self._price: Optional[Decimal] = None
         self._last_updated: float = 0.0
         self._token0: Optional[str] = None
@@ -356,7 +386,8 @@ class PriceService:
             return
         if not self.cfg.virtual_usdc_pair_addr:
             return
-        await self.refresh_once()
+        if not (self._is_paused and self._is_paused()):
+            await self.refresh_once()
         self._task = asyncio.create_task(self._loop())
 
     async def stop(self) -> None:
@@ -368,6 +399,9 @@ class PriceService:
     async def _loop(self) -> None:
         while True:
             try:
+                if self._is_paused and self._is_paused():
+                    await asyncio.sleep(1)
+                    continue
                 await self.refresh_once()
             except Exception:
                 pass
@@ -1792,6 +1826,11 @@ class VirtualsBot:
             self.storage.set_state("launch_configs_rev", str(int(time.time())))
         if not self.storage.get_state("my_wallets_rev"):
             self.storage.set_state("my_wallets_rev", str(int(time.time())))
+        if self.storage.get_state("runtime_bootstrap_v2") != "1":
+            self.storage.set_state("runtime_paused", "1")
+            self.storage.set_state("runtime_bootstrap_v2", "1")
+        elif self.storage.get_state("runtime_paused") is None:
+            self.storage.set_state("runtime_paused", "1")
         self.ws_reconnect_event = asyncio.Event()
         self.http_rpc = RPCClient(cfg.http_rpc_url, max_retries=cfg.max_rpc_retries)
         if cfg.backfill_http_rpc_url:
@@ -1802,7 +1841,19 @@ class VirtualsBot:
             self.backfill_http_rpc = self.http_rpc
         self.backfill_rpc_separate = self.backfill_http_rpc is not self.http_rpc
         self.ws_timeout = aiohttp.ClientTimeout(total=None)
-        self.price_service = PriceService(cfg, self.http_rpc)
+        self.runtime_ui_heartbeat_timeout_sec = 20
+        self.runtime_manual_paused = True
+        self.runtime_ui_last_seen_at = 0
+        self.runtime_ui_online = False
+        self.runtime_paused = True
+        self.runtime_pause_updated_at = int(time.time())
+        self._last_runtime_pause_check_ts = 0.0
+        self.refresh_runtime_pause_state(force=True)
+        self.price_service = PriceService(
+            cfg,
+            self.http_rpc,
+            is_paused=lambda: self.runtime_paused,
+        )
         self.queue: asyncio.Queue[Tuple[str, int, bool]] = asyncio.Queue(maxsize=10000)
         self.pending_txs: Set[str] = set()
         self.stop_event = asyncio.Event()
@@ -1868,6 +1919,76 @@ class VirtualsBot:
         rev = str(int(time.time()))
         self.storage.set_state("my_wallets_rev", rev)
         self.last_my_wallets_rev = rev
+
+    def _load_runtime_ui_last_seen(self) -> int:
+        raw = self.storage.get_state("runtime_ui_last_seen")
+        if raw is None:
+            return 0
+        try:
+            return max(0, int(str(raw)))
+        except Exception:
+            return 0
+
+    def touch_runtime_ui_heartbeat(self) -> int:
+        now = int(time.time())
+        self.storage.set_state("runtime_ui_last_seen", str(now))
+        self.runtime_ui_last_seen_at = now
+        return now
+
+    def get_runtime_paused(self) -> bool:
+        return self.refresh_runtime_pause_state(force=True)
+
+    def refresh_runtime_pause_state(self, force: bool = False) -> bool:
+        now = time.time()
+        if (not force) and (now - self._last_runtime_pause_check_ts < 1.0):
+            return self.runtime_paused
+        self._last_runtime_pause_check_ts = now
+        prev = self.runtime_paused
+        manual_paused = parse_bool_like(self.storage.get_state("runtime_paused"))
+        ui_last_seen_at = self._load_runtime_ui_last_seen()
+        ui_online = (ui_last_seen_at > 0) and (
+            int(now) - ui_last_seen_at <= self.runtime_ui_heartbeat_timeout_sec
+        )
+        effective_paused = bool(manual_paused or (not ui_online))
+        self.runtime_manual_paused = manual_paused
+        self.runtime_ui_last_seen_at = ui_last_seen_at
+        self.runtime_ui_online = ui_online
+        self.runtime_paused = effective_paused
+        if self.runtime_paused != prev:
+            self.runtime_pause_updated_at = int(now)
+            if self.is_realtime_role:
+                self.ws_reconnect_event.set()
+            if self.runtime_paused:
+                self.stats["ws_connected"] = False
+        return self.runtime_paused
+
+    def set_runtime_paused(self, paused: bool) -> bool:
+        value = "1" if bool(paused) else "0"
+        self.storage.set_state("runtime_paused", value)
+        if not paused:
+            # Runtime must be kept alive by active dashboard heartbeat.
+            self.touch_runtime_ui_heartbeat()
+        return self.refresh_runtime_pause_state(force=True)
+
+    def runtime_pause_payload(self) -> Dict[str, Any]:
+        self.refresh_runtime_pause_state(force=True)
+        return {
+            "runtimePaused": bool(self.runtime_paused),
+            "runtimeManualPaused": bool(self.runtime_manual_paused),
+            "runtimeUiOnline": bool(self.runtime_ui_online),
+            "runtimeUiLastSeenAt": (
+                int(self.runtime_ui_last_seen_at) if self.runtime_ui_last_seen_at > 0 else None
+            ),
+            "runtimeUiHeartbeatTimeoutSec": int(self.runtime_ui_heartbeat_timeout_sec),
+            "updatedAt": int(self.runtime_pause_updated_at),
+        }
+
+    async def wait_until_resumed(self) -> bool:
+        while not self.stop_event.is_set():
+            if not self.refresh_runtime_pause_state():
+                return True
+            await asyncio.sleep(0.5)
+        return False
 
     async def launch_config_watch_loop(self) -> None:
         while not self.stop_event.is_set():
@@ -1948,6 +2069,9 @@ class VirtualsBot:
     def build_heartbeat_payload(self) -> Dict[str, Any]:
         return {
             "role": self.role,
+            "runtime_paused": bool(self.runtime_paused),
+            "runtime_manual_paused": bool(self.runtime_manual_paused),
+            "runtime_ui_online": bool(self.runtime_ui_online),
             "ws_connected": bool(self.stats.get("ws_connected", False)),
             "enqueued_txs": int(self.stats.get("enqueued_txs", 0)),
             "processed_txs": int(self.stats.get("processed_txs", 0)),
@@ -1964,6 +2088,7 @@ class VirtualsBot:
     async def role_heartbeat_loop(self) -> None:
         while not self.stop_event.is_set():
             try:
+                self.refresh_runtime_pause_state(force=True)
                 self.event_bus.upsert_role_heartbeat(self.role, self.build_heartbeat_payload())
             except Exception:
                 pass
@@ -1989,6 +2114,9 @@ class VirtualsBot:
 
     async def scan_job_dispatch_loop(self) -> None:
         while not self.stop_event.is_set():
+            if self.refresh_runtime_pause_state():
+                await asyncio.sleep(1)
+                continue
             job = self.event_bus.claim_next_scan_job()
             if not job:
                 await asyncio.sleep(1)
@@ -2288,6 +2416,9 @@ class VirtualsBot:
 
     async def consumer_loop(self) -> None:
         while not self.stop_event.is_set():
+            if self.refresh_runtime_pause_state():
+                await asyncio.sleep(0.5)
+                continue
             tx_hash, block_number, use_backfill_rpc = await self.queue.get()
             try:
                 rpc_client = self.backfill_http_rpc if use_backfill_rpc else self.http_rpc
@@ -2317,6 +2448,10 @@ class VirtualsBot:
     async def ws_loop(self) -> None:
         while not self.stop_event.is_set():
             try:
+                if self.refresh_runtime_pause_state():
+                    self.stats["ws_connected"] = False
+                    await asyncio.sleep(1)
+                    continue
                 launch_configs = self.get_launch_configs()
                 if not launch_configs:
                     await asyncio.sleep(2)
@@ -2369,6 +2504,9 @@ class VirtualsBot:
 
                         while not self.stop_event.is_set():
                             if self.ws_reconnect_event.is_set():
+                                break
+                            if self.refresh_runtime_pause_state():
+                                self.stats["ws_connected"] = False
                                 break
                             try:
                                 msg = await ws.receive(timeout=5)
@@ -2502,6 +2640,8 @@ class VirtualsBot:
                 job["status"] = "running"
                 job["startedAt"] = int(time.time())
                 scan_rpc = self.backfill_http_rpc
+                if not await self.wait_until_resumed():
+                    return
 
                 if project:
                     selected = self.storage.get_launch_config_by_name(project)
@@ -2533,6 +2673,8 @@ class VirtualsBot:
 
                 current = from_block
                 while current <= to_block and not self.stop_event.is_set():
+                    if not await self.wait_until_resumed():
+                        break
                     if job.get("cancelRequested"):
                         canceled = True
                         break
@@ -2550,6 +2692,8 @@ class VirtualsBot:
                             todo_list = [x for x in tx_list if x not in known]
 
                     for tx_hash in todo_list:
+                        if not await self.wait_until_resumed():
+                            break
                         if job.get("cancelRequested"):
                             canceled = True
                             break
@@ -2595,6 +2739,8 @@ class VirtualsBot:
         async with self.scan_lock:
             try:
                 scan_rpc = self.backfill_http_rpc
+                if not await self.wait_until_resumed():
+                    return
                 if project:
                     selected = self.storage.get_launch_config_by_name(project)
                     launch_configs = [selected] if selected else []
@@ -2635,6 +2781,8 @@ class VirtualsBot:
 
                 current = from_block
                 while current <= to_block and not self.stop_event.is_set():
+                    if not await self.wait_until_resumed():
+                        break
                     if self.event_bus.is_scan_job_cancel_requested(job_id):
                         canceled = True
                         break
@@ -2652,6 +2800,8 @@ class VirtualsBot:
                             todo_list = [x for x in tx_list if x not in known]
 
                     for tx_hash in todo_list:
+                        if not await self.wait_until_resumed():
+                            break
                         if self.event_bus.is_scan_job_cancel_requested(job_id):
                             canceled = True
                             break
@@ -2705,15 +2855,20 @@ class VirtualsBot:
     async def backfill_loop(self) -> None:
         checkpoint_raw = self.storage.get_state("last_processed_block")
         scan_rpc = self.backfill_http_rpc
-        latest = await scan_rpc.get_latest_block_number()
         if checkpoint_raw:
             cursor = int(checkpoint_raw)
         else:
-            cursor = max(0, latest - 20)
-            self.storage.set_state("last_processed_block", str(cursor))
+            cursor = None
 
         while not self.stop_event.is_set():
             try:
+                if self.refresh_runtime_pause_state():
+                    await asyncio.sleep(1)
+                    continue
+                if cursor is None:
+                    latest = await scan_rpc.get_latest_block_number()
+                    cursor = max(0, latest - 20)
+                    self.storage.set_state("last_processed_block", str(cursor))
                 if self.scan_lock.locked():
                     await asyncio.sleep(1)
                     continue
@@ -2740,6 +2895,7 @@ class VirtualsBot:
                 await asyncio.sleep(2)
 
     async def health_handler(self, request: web.Request) -> web.Response:
+        runtime_paused = self.refresh_runtime_pause_state(force=True)
         p, _ = await self.price_service.get_price()
         stats = dict(self.stats)
         queue_size = int(self.queue.qsize())
@@ -2766,6 +2922,9 @@ class VirtualsBot:
             if bf_hb and (now - int(bf_hb["updated_at"]) <= 20):
                 bp = bf_hb.get("payload", {})
                 stats["last_backfill_block"] = int(bp.get("last_backfill_block", 0))
+        if runtime_paused:
+            stats["ws_connected"] = False
+        runtime_data = self.runtime_pause_payload()
 
         return web.json_response(
             {
@@ -2779,10 +2938,18 @@ class VirtualsBot:
                 "scanJobs": scan_jobs,
                 "backfillRpcMode": "separate" if self.backfill_rpc_separate else "shared",
                 "role": self.role,
+                "runtimePaused": runtime_data["runtimePaused"],
+                "runtimeManualPaused": runtime_data["runtimeManualPaused"],
+                "runtimeUiOnline": runtime_data["runtimeUiOnline"],
+                "runtimeUiLastSeenAt": runtime_data["runtimeUiLastSeenAt"],
+                "runtimeUiHeartbeatTimeoutSec": runtime_data["runtimeUiHeartbeatTimeoutSec"],
+                "runtimePauseUpdatedAt": runtime_data["updatedAt"],
             }
         )
 
     async def scan_range_handler(self, request: web.Request) -> web.Response:
+        if self.refresh_runtime_pause_state():
+            return web.json_response({"error": "runtime is paused"}, status=409)
         try:
             payload = await request.json()
         except Exception:
@@ -2979,6 +3146,35 @@ class VirtualsBot:
         except Exception as e:
             return web.json_response({"error": str(e)}, status=400)
 
+    async def runtime_pause_get_handler(self, request: web.Request) -> web.Response:
+        data = self.runtime_pause_payload()
+        data["ok"] = True
+        return web.json_response(data)
+
+    async def runtime_pause_set_handler(self, request: web.Request) -> web.Response:
+        try:
+            payload = await request.json()
+        except Exception:
+            return web.json_response({"error": "invalid json body"}, status=400)
+
+        if "paused" not in payload:
+            return web.json_response({"error": "paused is required"}, status=400)
+        try:
+            paused = parse_bool_request(payload.get("paused"))
+        except Exception as e:
+            return web.json_response({"error": str(e)}, status=400)
+
+        self.set_runtime_paused(paused)
+        data = self.runtime_pause_payload()
+        data["ok"] = True
+        return web.json_response(data)
+
+    async def runtime_heartbeat_handler(self, request: web.Request) -> web.Response:
+        self.touch_runtime_ui_heartbeat()
+        data = self.runtime_pause_payload()
+        data["ok"] = True
+        return web.json_response(data)
+
     async def launch_config_upsert_handler(self, request: web.Request) -> web.Response:
         try:
             payload = await request.json()
@@ -3044,6 +3240,7 @@ class VirtualsBot:
             return web.json_response({"error": str(e)}, status=400)
 
     async def meta_handler(self, request: web.Request) -> web.Response:
+        runtime_data = self.runtime_pause_payload()
         launch_configs = self.storage.list_launch_configs()
         projects = self.storage.list_projects()
         monitoring_projects = [x.name for x in self.get_launch_configs()]
@@ -3063,6 +3260,11 @@ class VirtualsBot:
                 },
                 "runtimeTuning": {
                     "db_batch_size": self.get_runtime_db_batch_size(),
+                    "runtime_paused": runtime_data["runtimePaused"],
+                    "runtime_manual_paused": runtime_data["runtimeManualPaused"],
+                    "runtime_ui_online": runtime_data["runtimeUiOnline"],
+                    "runtime_ui_last_seen_at": runtime_data["runtimeUiLastSeenAt"],
+                    "runtime_ui_heartbeat_timeout_sec": runtime_data["runtimeUiHeartbeatTimeoutSec"],
                 },
             }
         )
@@ -3209,6 +3411,9 @@ class VirtualsBot:
         app.router.add_post("/wallet-recalc", self.wallet_recalc_handler)
         app.router.add_get("/runtime/db-batch-size", self.runtime_db_batch_size_get_handler)
         app.router.add_post("/runtime/db-batch-size", self.runtime_db_batch_size_set_handler)
+        app.router.add_get("/runtime/pause", self.runtime_pause_get_handler)
+        app.router.add_post("/runtime/pause", self.runtime_pause_set_handler)
+        app.router.add_post("/runtime/heartbeat", self.runtime_heartbeat_handler)
         app.router.add_post("/scan-range", self.scan_range_handler)
         app.router.add_get("/scan-jobs/{job_id}", self.scan_job_detail_handler)
         app.router.add_post("/scan-jobs/{job_id}/cancel", self.scan_job_cancel_handler)
