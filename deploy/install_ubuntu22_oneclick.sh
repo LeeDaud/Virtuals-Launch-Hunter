@@ -5,7 +5,7 @@ set -euo pipefail
 # Deployment mode: same domain + /api reverse proxy
 #
 # Example:
-# DOMAIN=vps.licheng.website \
+# DOMAIN=launch.licheng.website \
 # LETSENCRYPT_EMAIL=you@example.com \
 # WS_RPC_URL=wss://... \
 # HTTP_RPC_URL=https://... \
@@ -16,7 +16,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 APP_DIR="${APP_DIR:-$ROOT_DIR}"
 WEB_DIR="${WEB_DIR:-/var/www/virtuals-launch-hunter}"
 SERVICE_PREFIX="${SERVICE_PREFIX:-virtuals-launch-hunter}"
-DOMAIN="${DOMAIN:-vps.licheng.website}"
+DOMAIN="${DOMAIN:-launch.licheng.website}"
 ENABLE_HTTPS="${ENABLE_HTTPS:-1}"
 
 RUN_USER="${SERVICE_USER:-${SUDO_USER:-$USER}}"

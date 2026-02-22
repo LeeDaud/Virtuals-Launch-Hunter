@@ -15,12 +15,12 @@ The project now supports:
 
 ## 0. One-click installer (Ubuntu 22.04, same-domain mode)
 
-For domain `vps.licheng.website` style deployment:
+For domain `launch.licheng.website` style deployment:
 
 ```bash
 cd /opt/virtuals-launch-hunter
 chmod +x deploy/install_ubuntu22_oneclick.sh
-DOMAIN=vps.licheng.website \
+DOMAIN=launch.licheng.website \
 LETSENCRYPT_EMAIL=you@example.com \
 WS_RPC_URL=wss://... \
 HTTP_RPC_URL=https://... \
@@ -168,6 +168,28 @@ Install:
 ```bash
 sudo cp /opt/virtuals-launch-hunter/deploy/nginx/vpulse-same-domain.conf /etc/nginx/sites-available/vpulse-same-domain.conf
 sudo ln -s /etc/nginx/sites-available/vpulse-same-domain.conf /etc/nginx/sites-enabled/
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+### Option C: `launch.licheng.website` with dedicated `launch` site file
+
+Use:
+- `deploy/nginx/launch-http-bootstrap.conf` (first-time cert issuance)
+- `deploy/nginx/launch.conf`
+
+Install (replace existing `v-pulse` or `vpulse` enabled site if present):
+
+```bash
+sudo cp /opt/virtuals-launch-hunter/deploy/nginx/launch-http-bootstrap.conf /etc/nginx/sites-available/launch
+sudo rm -f /etc/nginx/sites-enabled/v-pulse /etc/nginx/sites-enabled/v-pulse.conf
+sudo rm -f /etc/nginx/sites-enabled/vpulse /etc/nginx/sites-enabled/vpulse.conf
+sudo rm -f /etc/nginx/sites-enabled/vpulse-same-domain.conf
+sudo ln -sfn /etc/nginx/sites-available/launch /etc/nginx/sites-enabled/launch
+sudo nginx -t
+sudo systemctl reload nginx
+sudo certbot --nginx -d launch.licheng.website
+sudo cp /opt/virtuals-launch-hunter/deploy/nginx/launch.conf /etc/nginx/sites-available/launch
 sudo nginx -t
 sudo systemctl reload nginx
 ```
