@@ -489,6 +489,45 @@
       justify-content: space-between;
     }
 
+    .state-bar {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      width: 100%;
+    }
+
+    .state-item {
+      display: grid;
+      gap: 8px;
+      padding: 12px;
+      border: 1px solid rgba(176, 192, 219, 0.24);
+      border-radius: var(--r-ctl);
+      background: var(--card-2);
+    }
+
+    .state-item-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .state-item-title {
+      color: var(--text-2);
+      font-size: 12px;
+      letter-spacing: 0.45px;
+      text-transform: uppercase;
+      font-weight: 700;
+    }
+
+    .state-item-desc {
+      color: var(--text-3);
+      font-size: 12px;
+      font-family: var(--sans);
+      min-height: 18px;
+    }
+
     .batch-tuning-row {
       display: flex;
       gap: 8px;
@@ -803,6 +842,10 @@
         grid-template-columns: 1fr;
       }
 
+      .state-bar {
+        grid-template-columns: 1fr;
+      }
+
       .form-grid {
         grid-template-columns: 1fr;
       }
@@ -883,6 +926,33 @@
     <section class="card ui-bar">
       <span id="refreshPerf" class="hint">刷新耗时：-</span>
       <span id="delayPerf" class="hint">录入延迟 P50/P95：-</span>
+    </section>
+
+    <section class="card">
+      <div class="section-title">运行状态</div>
+      <div class="state-bar">
+        <div class="state-item">
+          <div class="state-item-head">
+            <span class="state-item-title">采集</span>
+            <span id="collectStateBadge" class="status">-</span>
+          </div>
+          <div id="collectStateDesc" class="state-item-desc">-</div>
+        </div>
+        <div class="state-item">
+          <div class="state-item-head">
+            <span class="state-item-title">回扫</span>
+            <span id="backfillStateBadge" class="status">-</span>
+          </div>
+          <div id="backfillStateDesc" class="state-item-desc">-</div>
+        </div>
+        <div class="state-item">
+          <div class="state-item-head">
+            <span class="state-item-title">实时更新</span>
+            <span id="realtimeStateBadge" class="status">-</span>
+          </div>
+          <div id="realtimeStateDesc" class="state-item-desc">-</div>
+        </div>
+      </div>
     </section>
 
     <section class="card">
@@ -1062,6 +1132,12 @@
     const hoverTip = document.getElementById("hoverTip");
     const refreshPerf = document.getElementById("refreshPerf");
     const delayPerf = document.getElementById("delayPerf");
+    const collectStateBadge = document.getElementById("collectStateBadge");
+    const collectStateDesc = document.getElementById("collectStateDesc");
+    const backfillStateBadge = document.getElementById("backfillStateBadge");
+    const backfillStateDesc = document.getElementById("backfillStateDesc");
+    const realtimeStateBadge = document.getElementById("realtimeStateBadge");
+    const realtimeStateDesc = document.getElementById("realtimeStateDesc");
     const dbBatchInput = document.getElementById("dbBatchInput");
     const applyDbBatchBtn = document.getElementById("applyDbBatchBtn");
     const dbBatchMessage = document.getElementById("dbBatchMessage");
@@ -1169,6 +1245,66 @@
       if (delaySec <= 5) return "delay-good";
       if (delaySec <= 15) return "delay-warn";
       return "delay-bad";
+    }
+
+    function setStateBadge(el, level, text) {
+      if (!el) return;
+      el.classList.remove("ok", "bad");
+      if (level === "ok") {
+        el.classList.add("ok");
+      } else if (level === "bad") {
+        el.classList.add("bad");
+      }
+      el.textContent = text || "-";
+    }
+
+    function renderRuntimeStateBar(health) {
+      if (!health || typeof health !== "object") {
+        setStateBadge(collectStateBadge, "", "-");
+        collectStateDesc.textContent = "状态未知";
+        setStateBadge(backfillStateBadge, "", "-");
+        backfillStateDesc.textContent = "状态未知";
+        setStateBadge(realtimeStateBadge, "", "-");
+        realtimeStateDesc.textContent = "状态未知";
+        return;
+      }
+      const runtimePausedNow = Boolean(health?.runtimePaused);
+      const scanJobs = Math.max(0, Number(health?.scanJobs || 0));
+      const wsConnectedNow = Boolean(health?.stats?.ws_connected);
+      const uiOnline = Boolean(health?.runtimeUiOnline);
+      const uiHeartbeatTimeoutSec = Math.max(0, Number(health?.runtimeUiHeartbeatTimeoutSec || 0));
+
+      if (runtimePausedNow) {
+        setStateBadge(collectStateBadge, "bad", "已暂停");
+        collectStateDesc.textContent = uiOnline
+          ? "采集已关闭（手动暂停）"
+          : `采集已关闭（无心跳超过 ${uiHeartbeatTimeoutSec}s）`;
+      } else {
+        setStateBadge(collectStateBadge, "ok", "运行中");
+        collectStateDesc.textContent = "采集已开启（手动控制）";
+      }
+
+      if (runtimePausedNow) {
+        setStateBadge(backfillStateBadge, "bad", "已暂停");
+        backfillStateDesc.textContent = "采集暂停时不执行回扫任务";
+      } else if (scanJobs > 0) {
+        setStateBadge(backfillStateBadge, "ok", "执行中");
+        backfillStateDesc.textContent = `当前有 ${scanJobs} 个回扫任务（队列/运行）`;
+      } else {
+        setStateBadge(backfillStateBadge, "", "待命");
+        backfillStateDesc.textContent = "无回扫任务，处于待命状态";
+      }
+
+      if (runtimePausedNow) {
+        setStateBadge(realtimeStateBadge, "bad", "已暂停");
+        realtimeStateDesc.textContent = "采集暂停时不进行实时链上更新";
+      } else if (wsConnectedNow) {
+        setStateBadge(realtimeStateBadge, "ok", "运行中");
+        realtimeStateDesc.textContent = "WS 已连接，实时更新正常";
+      } else {
+        setStateBadge(realtimeStateBadge, "bad", "异常");
+        realtimeStateDesc.textContent = "WS 未连接，实时更新中断";
+      }
     }
 
     function fmtNum(v, digits = 6) {
@@ -1582,29 +1718,6 @@
       }, RUNTIME_HEARTBEAT_MS);
     }
 
-    function pauseRuntimeOnPageExit() {
-      if (runtimePaused) {
-        return;
-      }
-      const url = buildApiUrl("/runtime/pause");
-      const body = JSON.stringify({ paused: true });
-      try {
-        if (navigator.sendBeacon) {
-          const blob = new Blob([body], { type: "application/json" });
-          navigator.sendBeacon(url, blob);
-          return;
-        }
-      } catch (e) {
-        // ignore
-      }
-      fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body,
-        keepalive: true,
-      }).catch(() => {});
-    }
-
     function setRuntimePauseUi(paused) {
       const prevPaused = runtimePaused;
       runtimePaused = Boolean(paused);
@@ -1994,7 +2107,7 @@
       setRuntimePauseUi(Boolean(data.runtimePaused));
       refreshMessage.textContent = runtimePaused
         ? "采集已暂停：链上监听/回扫/价格轮询已停止"
-        : "采集已恢复：链上监听与回扫继续运行";
+        : "采集已恢复：链上监听与回扫继续运行（无心跳 2 小时后自动暂停）";
       await refreshAllSafe();
       return true;
     }
@@ -2296,6 +2409,7 @@
       if (typeof health.runtimePaused === "boolean") {
         setRuntimePauseUi(health.runtimePaused);
       }
+      renderRuntimeStateBar(health);
 
       wsStatus.innerHTML = health.stats?.ws_connected
         ? `<span class="status ok">已连接</span>`
@@ -2380,6 +2494,7 @@
         refreshMessage.textContent = "已就绪";
       } catch (e) {
         wsStatus.innerHTML = `<span class="status bad">初始化失败</span>`;
+        renderRuntimeStateBar(null);
         lcMessage.textContent = String(e.message || e);
         refreshMessage.textContent = `初始化失败：${e.message || e}`;
         console.error(e);
@@ -2486,8 +2601,6 @@
       tipMouseInside = false;
       hideHoverTip();
     });
-    window.addEventListener("pagehide", pauseRuntimeOnPageExit);
-    window.addEventListener("beforeunload", pauseRuntimeOnPageExit);
     // Keep tooltip stable even when table rows are re-rendered by high-frequency refresh.
     setInterval(() => {
       if (tipMouseInside) {

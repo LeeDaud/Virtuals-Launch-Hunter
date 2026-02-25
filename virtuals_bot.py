@@ -1841,7 +1841,7 @@ class VirtualsBot:
             self.backfill_http_rpc = self.http_rpc
         self.backfill_rpc_separate = self.backfill_http_rpc is not self.http_rpc
         self.ws_timeout = aiohttp.ClientTimeout(total=None)
-        self.runtime_ui_heartbeat_timeout_sec = 20
+        self.runtime_ui_heartbeat_timeout_sec = 2 * 60 * 60
         self.runtime_manual_paused = True
         self.runtime_ui_last_seen_at = 0
         self.runtime_ui_online = False
