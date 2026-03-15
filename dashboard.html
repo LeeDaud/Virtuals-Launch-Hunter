@@ -606,6 +606,15 @@
       margin-bottom: 12px;
     }
 
+    .launch-feed-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 12px;
+    }
+
     .wallet-chip {
       display: flex;
       align-items: center;
@@ -681,6 +690,16 @@
       border-color: rgba(73, 242, 255, 0.55);
       background: rgba(73, 242, 255, 0.14);
       color: #ddfbff;
+    }
+
+    .launch-link {
+      color: #b7f9ff;
+      text-decoration: none;
+      font-weight: 600;
+    }
+
+    .launch-link:hover {
+      text-decoration: underline;
     }
 
     table {
@@ -1007,6 +1026,29 @@
       </div>
     </section>
 
+    <section class="card">
+      <div class="section-title">发射项目列表（来自 003）</div>
+      <div class="launch-feed-bar">
+        <span class="hint">通过 003-SignalHub API 获取，仅展示，不影响当前监控项目。</span>
+        <span id="signalhubLaunchMessage" class="hint">加载中...</span>
+      </div>
+      <div class="table-wrap">
+        <table id="signalhubLaunchTable">
+          <thead>
+            <tr>
+              <th>项目</th>
+              <th>代号</th>
+              <th>状态</th>
+              <th>发射时间</th>
+              <th>合约地址</th>
+              <th>链接</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
     <section class="grid-5">
       <div class="card">
         <div class="kpi-title">连接状态</div>
@@ -1155,6 +1197,8 @@
     const leaderBody = document.querySelector("#leaderTable tbody");
     const txDelayBody = document.querySelector("#txDelayTable tbody");
     const launchConfigBody = document.querySelector("#launchConfigTable tbody");
+    const signalhubLaunchBody = document.querySelector("#signalhubLaunchTable tbody");
+    const signalhubLaunchMessage = document.getElementById("signalhubLaunchMessage");
     const chart = document.getElementById("minuteChart");
     const ctx = chart.getContext("2d");
     const lcName = document.getElementById("lcName");
@@ -1192,6 +1236,7 @@
     let currentScanJobId = null;
     let monitoredWallets = [];
     let launchConfigRowsCache = [];
+    let signalhubLaunchRowsCache = [];
     let currentDbBatchSize = null;
     let projectDropdownOpen = false;
     let runtimePaused = false;
@@ -1367,6 +1412,13 @@
         .replaceAll(">", "&gt;");
     }
 
+    function escHtml(v) {
+      return String(v ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;");
+    }
+
     function copyBtnHtml(text) {
       if (!text) return "";
       return `<button class="copy-btn" type="button" data-copy="${escAttr(text)}">复制</button>`;
@@ -1443,6 +1495,19 @@
       if (!ts) return "-";
       const d = new Date(Number(ts) * 1000);
       if (Number.isNaN(d.getTime())) return String(ts);
+      return d.toLocaleString();
+    }
+
+    function fmtDateTimeLike(value) {
+      if (value === null || value === undefined || value === "") return "-";
+      if (typeof value === "number") return fmtTs(value);
+      const raw = String(value).trim();
+      if (!raw) return "-";
+      if (/^\d+$/.test(raw)) {
+        return fmtTs(Number(raw));
+      }
+      const d = new Date(raw);
+      if (Number.isNaN(d.getTime())) return raw;
       return d.toLocaleString();
     }
 
@@ -1961,6 +2026,53 @@
       renderLaunchConfigTable(rows);
       syncLaunchFormToSelectedProject();
       return rows;
+    }
+
+    function renderSignalHubLaunchTable(rows) {
+      signalhubLaunchBody.innerHTML = "";
+      rows.forEach((item) => {
+        const title = String(item?.display_title || item?.name || item?.project_id || "-").trim() || "-";
+        const tipParts = [item?.name, item?.symbol, item?.project_id]
+          .map((v) => String(v || "").trim())
+          .filter((v, idx, arr) => v && arr.indexOf(v) === idx);
+        const launchTimeText = fmtDateTimeLike(item?.launch_time);
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${tipSpanHtml(escHtml(title), tipParts.join(" | ") || title)}</td>
+          <td>${escHtml(item?.symbol || "-")}</td>
+          <td>${escHtml(item?.status || "-")}</td>
+          <td>${escHtml(launchTimeText)}</td>
+          <td>${item?.contract_address ? addrWithCopyHtml(item.contract_address) : "-"}</td>
+          <td>${item?.url ? `<a class="launch-link" href="${escAttr(item.url)}" target="_blank" rel="noreferrer">打开</a>` : "-"}</td>
+        `;
+        signalhubLaunchBody.appendChild(tr);
+      });
+      if (!rows.length) {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `<td colspan="6" class="muted">暂无发射项目数据。</td>`;
+        signalhubLaunchBody.appendChild(tr);
+      }
+    }
+
+    async function loadSignalHubLaunches() {
+      signalhubLaunchMessage.textContent = "发射项目列表加载中...";
+      try {
+        const data = await jget("/signalhub/launches?limit=100");
+        const rows = Array.isArray(data.items) ? data.items : [];
+        signalhubLaunchRowsCache = rows;
+        renderSignalHubLaunchTable(rows);
+        if (data.ok === false) {
+          signalhubLaunchMessage.textContent = `发射项目列表读取失败：${data.error || "未知错误"}`;
+        } else {
+          signalhubLaunchMessage.textContent = `当前 ${rows.length} 个待发射项目`;
+        }
+        return rows;
+      } catch (e) {
+        signalhubLaunchRowsCache = [];
+        renderSignalHubLaunchTable([]);
+        signalhubLaunchMessage.textContent = `发射项目列表读取失败：${e.message || e}`;
+        return [];
+      }
     }
 
     async function requestJsonWithBody(url, method, payload) {
@@ -2488,6 +2600,7 @@
           // ignore older backend
         }
         await loadLaunchConfigs();
+        await loadSignalHubLaunches();
         await refreshAllSafe();
         const minuteRange = getMinuteRangeTs();
         minuteRangeMessage.textContent = `当前分钟区间：${fmtTs(minuteRange.from)} ~ ${fmtTs(minuteRange.to)}`;
@@ -2633,6 +2746,7 @@
         { loading: "刷新中...", success: "已刷新", failed: "刷新失败" },
         async () => {
           await refreshAllSafe();
+          await loadSignalHubLaunches();
           refreshMessage.textContent = `刷新成功：${new Date().toLocaleTimeString()}`;
         },
         refreshMessage

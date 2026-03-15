@@ -176,6 +176,7 @@ class AppConfig:
     api_host: str
     api_port: int
     cors_allow_origins: List[str]
+    signalhub_api_base_url: str
 
 
 def load_config(path: str) -> AppConfig:
@@ -260,6 +261,11 @@ def load_config(path: str) -> AppConfig:
             for x in cors_allow_origins_raw
             if str(x).strip()
         ]
+    signalhub_api_base_url = (
+        str(raw.get("SIGNALHUB_API_BASE_URL", "http://127.0.0.1:8000"))
+        .strip()
+        .rstrip("/")
+    )
 
     return AppConfig(
         chain_id=chain_id,
@@ -293,6 +299,7 @@ def load_config(path: str) -> AppConfig:
         api_host=str(raw.get("API_HOST", "127.0.0.1")),
         api_port=int(raw.get("API_PORT", 8080)),
         cors_allow_origins=cors_allow_origins,
+        signalhub_api_base_url=signalhub_api_base_url,
     )
 
 
@@ -1841,6 +1848,7 @@ class VirtualsBot:
             self.backfill_http_rpc = self.http_rpc
         self.backfill_rpc_separate = self.backfill_http_rpc is not self.http_rpc
         self.ws_timeout = aiohttp.ClientTimeout(total=None)
+        self.signalhub_api_timeout = aiohttp.ClientTimeout(total=12)
         self.runtime_ui_heartbeat_timeout_sec = 2 * 60 * 60
         self.runtime_manual_paused = True
         self.runtime_ui_last_seen_at = 0
@@ -3239,6 +3247,87 @@ class VirtualsBot:
         except Exception as e:
             return web.json_response({"error": str(e)}, status=400)
 
+    async def signalhub_launches_handler(self, request: web.Request) -> web.Response:
+        base_url = str(self.cfg.signalhub_api_base_url or "").strip().rstrip("/")
+        limit_raw = request.query.get("limit", "50")
+        try:
+            limit_n = max(1, min(200, int(limit_raw)))
+        except Exception:
+            limit_n = 50
+
+        if not base_url:
+            return web.json_response(
+                {
+                    "ok": False,
+                    "count": 0,
+                    "items": [],
+                    "error": "SIGNALHUB_API_BASE_URL is not configured",
+                }
+            )
+
+        upstream_url = (
+            f"{base_url}/projects?upcoming_only=true"
+            f"&order_by=launch_time_asc&limit={limit_n}"
+        )
+        try:
+            async with aiohttp.ClientSession(timeout=self.signalhub_api_timeout) as session:
+                async with session.get(
+                    upstream_url,
+                    headers={"Accept": "application/json"},
+                ) as resp:
+                    raw_text = await resp.text()
+                    if resp.status >= 400:
+                        return web.json_response(
+                            {
+                                "ok": False,
+                                "count": 0,
+                                "items": [],
+                                "source": upstream_url,
+                                "error": f"SignalHub API returned {resp.status}",
+                                "detail": raw_text[:300],
+                            }
+                        )
+        except Exception as e:
+            return web.json_response(
+                {
+                    "ok": False,
+                    "count": 0,
+                    "items": [],
+                    "source": upstream_url,
+                    "error": str(e),
+                }
+            )
+
+        try:
+            payload = json.loads(raw_text)
+        except Exception:
+            return web.json_response(
+                {
+                    "ok": False,
+                    "count": 0,
+                    "items": [],
+                    "source": upstream_url,
+                    "error": "SignalHub API returned invalid JSON",
+                    "detail": raw_text[:300],
+                }
+            )
+
+        if isinstance(payload, list):
+            items = payload
+        elif isinstance(payload, dict) and isinstance(payload.get("items"), list):
+            items = payload.get("items") or []
+        else:
+            items = []
+
+        return web.json_response(
+            {
+                "ok": True,
+                "count": len(items),
+                "items": items,
+                "source": upstream_url,
+            }
+        )
+
     async def meta_handler(self, request: web.Request) -> web.Response:
         runtime_data = self.runtime_pause_payload()
         launch_configs = self.storage.list_launch_configs()
@@ -3402,6 +3491,7 @@ class VirtualsBot:
         if favicon_dir.is_dir():
             app.router.add_static("/favicon/", path=str(favicon_dir), show_index=False)
         app.router.add_get("/meta", self.meta_handler)
+        app.router.add_get("/signalhub/launches", self.signalhub_launches_handler)
         app.router.add_get("/launch-configs", self.launch_configs_handler)
         app.router.add_post("/launch-configs", self.launch_config_upsert_handler)
         app.router.add_delete("/launch-configs/{name}", self.launch_config_delete_handler)
