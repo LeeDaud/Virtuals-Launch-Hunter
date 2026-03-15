@@ -1,5 +1,5 @@
 param(
-  [string]$ConfigPath = ".\config.json",
+  [string]$ConfigPath = "..\.env",
   [switch]$Quiet
 )
 
@@ -9,6 +9,10 @@ $ErrorActionPreference = "Stop"
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 Push-Location $scriptDir
 try {
+  if ($env:WORKSPACE_ENV_PATH -and (Test-Path $env:WORKSPACE_ENV_PATH)) {
+    $ConfigPath = $env:WORKSPACE_ENV_PATH
+  }
+
   $configResolved = $null
   if (Test-Path $ConfigPath) {
     $configResolved = (Resolve-Path $ConfigPath).Path

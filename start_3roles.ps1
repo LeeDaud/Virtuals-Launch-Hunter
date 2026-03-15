@@ -1,5 +1,5 @@
 param(
-  [string]$ConfigPath = ".\config.json",
+  [string]$ConfigPath = "..\.env",
   [string]$PythonExe = "python",
   [switch]$ForceRestart
 )
@@ -10,6 +10,10 @@ $ErrorActionPreference = "Stop"
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 Push-Location $scriptDir
 try {
+  if ($env:WORKSPACE_ENV_PATH -and (Test-Path $env:WORKSPACE_ENV_PATH)) {
+    $ConfigPath = $env:WORKSPACE_ENV_PATH
+  }
+
   if (-not (Test-Path $ConfigPath)) {
     throw "Config file not found: $ConfigPath"
   }

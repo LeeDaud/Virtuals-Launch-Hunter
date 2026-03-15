@@ -702,6 +702,18 @@
       text-decoration: underline;
     }
 
+    .launch-track-btn {
+      height: 30px;
+      padding: 0 10px;
+      min-width: 86px;
+      font-size: 11px;
+    }
+
+    .launch-track-btn.is-ready {
+      border-color: rgba(123, 255, 176, 0.5);
+      box-shadow: inset 0 0 0 1px rgba(123, 255, 176, 0.16);
+    }
+
     table {
       width: 100%;
       border-collapse: separate;
@@ -757,6 +769,13 @@
 
     #launchConfigTable th:nth-child(3),
     #launchConfigTable td:nth-child(3) {
+      text-align: center;
+    }
+
+    #signalhubLaunchTable th:nth-child(7),
+    #signalhubLaunchTable td:nth-child(7),
+    #signalhubLaunchTable th:nth-child(8),
+    #signalhubLaunchTable td:nth-child(8) {
       text-align: center;
     }
 
@@ -1027,9 +1046,9 @@
     </section>
 
     <section class="card">
-      <div class="section-title">发射项目列表（来自 003）</div>
+      <div class="section-title">发射项目列表（来自 SignalHub）</div>
       <div class="launch-feed-bar">
-        <span class="hint">通过 003-SignalHub API 获取，仅展示，不影响当前监控项目。</span>
+        <span class="hint">通过 SignalHub API 获取，仅展示，不影响当前监控项目。</span>
         <span id="signalhubLaunchMessage" class="hint">加载中...</span>
       </div>
       <div class="table-wrap">
@@ -1041,6 +1060,8 @@
               <th>状态</th>
               <th>发射时间</th>
               <th>合约地址</th>
+              <th>追踪池地址</th>
+              <th>操作</th>
               <th>链接</th>
             </tr>
           </thead>
@@ -1215,6 +1236,8 @@
     const SCAN_END_STORAGE_KEY = "virtuals_scan_end_utc8";
     const MINUTE_START_STORAGE_KEY = "virtuals_minute_start_utc8";
     const MINUTE_END_STORAGE_KEY = "virtuals_minute_end_utc8";
+    const DEFAULT_SIGNALHUB_REFRESH_MS = 5000;
+    const DEFAULT_SIGNAL_TRACK_WINDOW_SEC = 105 * 60;
     const NORMAL_REFRESH_MS = 1000;
     const FAST_REFRESH_MS = 500;
     const SUPER_REFRESH_MS = 250;
@@ -1237,6 +1260,11 @@
     let monitoredWallets = [];
     let launchConfigRowsCache = [];
     let signalhubLaunchRowsCache = [];
+    let signalhubLaunchTimer = null;
+    let signalhubLaunchRefreshInFlight = false;
+    let lastSignalHubLaunchFetchAt = 0;
+    let signalhubRefreshMs = DEFAULT_SIGNALHUB_REFRESH_MS;
+    let signalTrackWindowSec = DEFAULT_SIGNAL_TRACK_WINDOW_SEC;
     let currentDbBatchSize = null;
     let projectDropdownOpen = false;
     let runtimePaused = false;
@@ -1509,6 +1537,22 @@
       const d = new Date(raw);
       if (Number.isNaN(d.getTime())) return raw;
       return d.toLocaleString();
+    }
+
+    function parseDateTimeLikeToTs(value) {
+      if (value === null || value === undefined || value === "") return null;
+      if (typeof value === "number" && Number.isFinite(value)) {
+        return Math.floor(value);
+      }
+      const raw = String(value).trim();
+      if (!raw) return null;
+      if (/^\d+$/.test(raw)) {
+        const n = Number(raw);
+        return Number.isFinite(n) ? Math.floor(n) : null;
+      }
+      const ms = Date.parse(raw);
+      if (!Number.isFinite(ms)) return null;
+      return Math.floor(ms / 1000);
     }
 
     function fmtHm(ts) {
@@ -1888,17 +1932,31 @@
       if (Array.isArray(meta.launchConfigs)) {
         launchConfigRowsCache = meta.launchConfigs;
       }
-      projectSelect.innerHTML = "";
+      const projectNames = [];
+      const seenProjectNames = new Set();
+      const pushProjectName = (value) => {
+        const name = String(value || "").trim();
+        if (!name || seenProjectNames.has(name)) return;
+        seenProjectNames.add(name);
+        projectNames.push(name);
+      };
       for (const p of meta.projects || []) {
+        pushProjectName(p);
+      }
+      for (const row of meta.launchConfigs || []) {
+        pushProjectName(row?.name);
+      }
+      projectSelect.innerHTML = "";
+      for (const p of projectNames) {
         const opt = document.createElement("option");
         opt.value = p;
         opt.textContent = p;
         projectSelect.appendChild(opt);
       }
-      if (current && (meta.projects || []).includes(current)) {
+      if (current && projectNames.includes(current)) {
         projectSelect.value = current;
-      } else if (meta.projects && meta.projects.length) {
-        projectSelect.value = meta.projects[0];
+      } else if (projectNames.length) {
+        projectSelect.value = projectNames[0];
       }
       syncProjectDropdownUi();
       saveSelectedProject(projectSelect.value);
@@ -1914,6 +1972,12 @@
       }
       if (meta.runtimeTuning && typeof meta.runtimeTuning.runtime_paused === "boolean") {
         setRuntimePauseUi(Boolean(meta.runtimeTuning.runtime_paused));
+      }
+      if (meta.signalHubFeed && Number.isFinite(Number(meta.signalHubFeed.refresh_sec))) {
+        signalhubRefreshMs = Math.max(1000, Number(meta.signalHubFeed.refresh_sec) * 1000);
+      }
+      if (meta.signalHubFeed && Number.isFinite(Number(meta.signalHubFeed.track_window_min))) {
+        signalTrackWindowSec = Math.max(60, Number(meta.signalHubFeed.track_window_min) * 60);
       }
       renderMonitoredWallets(meta.wallets || []);
       syncLaunchFormToSelectedProject(projectSelect.value);
@@ -2028,6 +2092,89 @@
       return rows;
     }
 
+    function setTrackingWindowInputs(startTs, endTs) {
+      if (!Number.isFinite(startTs) || !Number.isFinite(endTs) || endTs < startTs) {
+        throw new Error("追踪时间窗口无效");
+      }
+      const startValue = tsToUtc8DatetimeLocal(startTs);
+      const endValue = tsToUtc8DatetimeLocal(endTs);
+      scanStartUtc8.value = startValue;
+      scanEndUtc8.value = endValue;
+      minuteStartUtc8.value = startValue;
+      minuteEndUtc8.value = endValue;
+      minuteRangeApplied = { from: startTs, to: endTs };
+      saveDatetimeLocal(SCAN_START_STORAGE_KEY, startValue);
+      saveDatetimeLocal(SCAN_END_STORAGE_KEY, endValue);
+      saveDatetimeLocal(MINUTE_START_STORAGE_KEY, startValue);
+      saveDatetimeLocal(MINUTE_END_STORAGE_KEY, endValue);
+      minuteRangeMessage.textContent = `当前分钟区间：${fmtTs(startTs)} ~ ${fmtTs(endTs)}`;
+    }
+
+    function getSignalHubTrackState(item) {
+      const launchTs = parseDateTimeLikeToTs(item?.launch_time);
+      const endTs = Number.isFinite(launchTs) ? launchTs + signalTrackWindowSec : null;
+      const nowTs = Math.floor(Date.now() / 1000);
+      const poolAddress = String(item?.liquidity_pool_address || "").trim();
+
+      if (!Number.isFinite(launchTs) || !Number.isFinite(endTs)) {
+        return {
+          canTrack: false,
+          launchTs: null,
+          endTs: null,
+          poolAddress,
+          label: "缺少时间",
+          reason: "缺少有效发射时间",
+        };
+      }
+      if (!poolAddress) {
+        return {
+          canTrack: false,
+          launchTs,
+          endTs,
+          poolAddress,
+          label: "缺少池地址",
+          reason: "003 尚未提供可追踪的流动池地址",
+        };
+      }
+      if (nowTs < launchTs) {
+        return {
+          canTrack: false,
+          launchTs,
+          endTs,
+          poolAddress,
+          label: "未到时间",
+          reason: `可追踪时间：${fmtTs(launchTs)} ~ ${fmtTs(endTs)}`,
+        };
+      }
+      if (nowTs > endTs) {
+        return {
+          canTrack: false,
+          launchTs,
+          endTs,
+          poolAddress,
+          label: "窗口结束",
+          reason: `追踪窗口已结束：${fmtTs(endTs)}`,
+        };
+      }
+      return {
+        canTrack: true,
+        launchTs,
+        endTs,
+        poolAddress,
+        label: "追踪",
+        reason: `追踪窗口：${fmtTs(launchTs)} ~ ${fmtTs(endTs)}`,
+      };
+    }
+
+    function restartSignalHubLaunchTimer() {
+      if (signalhubLaunchTimer) {
+        clearInterval(signalhubLaunchTimer);
+      }
+      signalhubLaunchTimer = setInterval(() => {
+        loadSignalHubLaunches({ silent: true }).catch(console.error);
+      }, signalhubRefreshMs);
+    }
+
     function renderSignalHubLaunchTable(rows) {
       signalhubLaunchBody.innerHTML = "";
       rows.forEach((item) => {
@@ -2036,6 +2183,10 @@
           .map((v) => String(v || "").trim())
           .filter((v, idx, arr) => v && arr.indexOf(v) === idx);
         const launchTimeText = fmtDateTimeLike(item?.launch_time);
+        const trackState = getSignalHubTrackState(item);
+        const trackBtnClass = trackState.canTrack
+          ? "pill launch-track-btn is-ready"
+          : "pill launch-track-btn";
         const tr = document.createElement("tr");
         tr.innerHTML = `
           <td>${tipSpanHtml(escHtml(title), tipParts.join(" | ") || title)}</td>
@@ -2043,28 +2194,50 @@
           <td>${escHtml(item?.status || "-")}</td>
           <td>${escHtml(launchTimeText)}</td>
           <td>${item?.contract_address ? addrWithCopyHtml(item.contract_address) : "-"}</td>
+          <td>${item?.liquidity_pool_address ? addrWithCopyHtml(item.liquidity_pool_address) : "-"}</td>
+          <td>
+            <button
+              type="button"
+              class="${trackBtnClass}"
+              data-track-launch="${escAttr(item?.project_id || "")}"
+              title="${escAttr(trackState.reason || "")}"
+              ${trackState.canTrack ? "" : "disabled"}
+            >${escHtml(trackState.label)}</button>
+          </td>
           <td>${item?.url ? `<a class="launch-link" href="${escAttr(item.url)}" target="_blank" rel="noreferrer">打开</a>` : "-"}</td>
         `;
         signalhubLaunchBody.appendChild(tr);
       });
       if (!rows.length) {
         const tr = document.createElement("tr");
-        tr.innerHTML = `<td colspan="6" class="muted">暂无发射项目数据。</td>`;
+        tr.innerHTML = `<td colspan="8" class="muted">暂无发射项目数据。</td>`;
         signalhubLaunchBody.appendChild(tr);
       }
     }
 
-    async function loadSignalHubLaunches() {
-      signalhubLaunchMessage.textContent = "发射项目列表加载中...";
+    async function loadSignalHubLaunches({ force = false, silent = false } = {}) {
+      const now = Date.now();
+      if (!force && signalhubLaunchRefreshInFlight) {
+        return signalhubLaunchRowsCache;
+      }
+      if (!force && now - lastSignalHubLaunchFetchAt < signalhubRefreshMs) {
+        return signalhubLaunchRowsCache;
+      }
+      signalhubLaunchRefreshInFlight = true;
+      if (!silent) {
+        signalhubLaunchMessage.textContent = "发射项目列表加载中...";
+      }
       try {
         const data = await jget("/signalhub/launches?limit=100");
         const rows = Array.isArray(data.items) ? data.items : [];
         signalhubLaunchRowsCache = rows;
         renderSignalHubLaunchTable(rows);
+        lastSignalHubLaunchFetchAt = Date.now();
         if (data.ok === false) {
           signalhubLaunchMessage.textContent = `发射项目列表读取失败：${data.error || "未知错误"}`;
         } else {
-          signalhubLaunchMessage.textContent = `当前 ${rows.length} 个待发射项目`;
+          signalhubLaunchMessage.textContent =
+            `当前 ${rows.length} 个待发射项目 | 更新于 ${new Date().toLocaleTimeString()}`;
         }
         return rows;
       } catch (e) {
@@ -2072,7 +2245,59 @@
         renderSignalHubLaunchTable([]);
         signalhubLaunchMessage.textContent = `发射项目列表读取失败：${e.message || e}`;
         return [];
+      } finally {
+        signalhubLaunchRefreshInFlight = false;
       }
+    }
+
+    async function activateSignalHubLaunchTracking(projectId) {
+      const item = signalhubLaunchRowsCache.find(
+        (x) => String(x?.project_id || "").trim() === String(projectId || "").trim()
+      );
+      if (!item) {
+        throw new Error("未找到对应的发射项目");
+      }
+
+      const trackState = getSignalHubTrackState(item);
+      if (!trackState.canTrack) {
+        throw new Error(trackState.reason || "当前不可追踪");
+      }
+      if (currentScanJobId) {
+        throw new Error("当前已有回扫任务执行中，请稍后再试");
+      }
+
+      const projectName = String(item?.symbol || item?.name || item?.project_id || "").trim();
+      if (!projectName) {
+        throw new Error("项目名为空，无法切换追踪");
+      }
+
+      lcName.value = projectName;
+      lcInternalPool.value = trackState.poolAddress;
+      lcSwitchOnly.checked = true;
+      setTrackingWindowInputs(trackState.launchTs, trackState.endTs);
+
+      const data = await requestJsonWithBody("/launch-configs", "POST", {
+        name: projectName,
+        internal_pool_addr: trackState.poolAddress,
+        switch_only: true,
+        is_enabled: true,
+      });
+
+      lcMessage.textContent =
+        `已切换追踪项目：${projectName} | 池地址=${shortAddr(trackState.poolAddress)} | 代币合约=${shortAddr(item?.contract_address || "-")}`;
+      launchConfigRowsCache = data.items || [];
+      renderLaunchConfigTable(launchConfigRowsCache);
+      await loadMeta();
+      projectSelect.value = projectName;
+      syncProjectDropdownUi();
+      saveSelectedProject(projectName);
+      syncLaunchFormToSelectedProject(projectName);
+      await refreshAllSafe();
+      await scanRangeByUtc8();
+      await loadSignalHubLaunches({ force: true, silent: true });
+      refreshMessage.textContent =
+        `已切换到 ${projectName} 并启动追踪：${fmtTs(trackState.launchTs)} ~ ${fmtTs(trackState.endTs)}`;
+      return true;
     }
 
     async function requestJsonWithBody(url, method, payload) {
@@ -2600,7 +2825,8 @@
           // ignore older backend
         }
         await loadLaunchConfigs();
-        await loadSignalHubLaunches();
+        await loadSignalHubLaunches({ force: true });
+        restartSignalHubLaunchTimer();
         await refreshAllSafe();
         const minuteRange = getMinuteRangeTs();
         minuteRangeMessage.textContent = `当前分钟区间：${fmtTs(minuteRange.from)} ~ ${fmtTs(minuteRange.to)}`;
@@ -2639,6 +2865,27 @@
     }
 
     document.addEventListener("click", async (ev) => {
+      const trackBtn = ev.target.closest(".launch-track-btn");
+      if (trackBtn) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        const projectId = trackBtn.getAttribute("data-track-launch") || "";
+        trackBtn.disabled = true;
+        trackBtn.textContent = "切换中...";
+        try {
+          await activateSignalHubLaunchTracking(projectId);
+          trackBtn.textContent = "已切换";
+        } catch (e) {
+          trackBtn.textContent = "失败";
+          signalhubLaunchMessage.textContent = `追踪切换失败：${e.message || e}`;
+        } finally {
+          setTimeout(() => {
+            renderSignalHubLaunchTable(signalhubLaunchRowsCache);
+          }, 900);
+        }
+        return;
+      }
+
       const recalcBtn = ev.target.closest(".wallet-recalc-btn");
       if (recalcBtn) {
         ev.preventDefault();
@@ -2746,7 +2993,7 @@
         { loading: "刷新中...", success: "已刷新", failed: "刷新失败" },
         async () => {
           await refreshAllSafe();
-          await loadSignalHubLaunches();
+          await loadSignalHubLaunches({ force: true });
           refreshMessage.textContent = `刷新成功：${new Date().toLocaleTimeString()}`;
         },
         refreshMessage

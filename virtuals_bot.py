@@ -2,6 +2,7 @@ import argparse
 import asyncio
 import contextlib
 import json
+import os
 import signal
 import sqlite3
 import time
@@ -25,6 +26,8 @@ DECIMALS_SELECTOR = "0x313ce567"
 TOKEN0_SELECTOR = "0x0dfe1681"
 TOKEN1_SELECTOR = "0xd21220a7"
 GET_RESERVES_SELECTOR = "0x0902f1ac"
+WORKSPACE_ROOT = Path(__file__).resolve().parent.parent
+DEFAULT_ENV_PATH = WORKSPACE_ROOT / ".env"
 
 
 def normalize_address(addr: str) -> str:
@@ -177,12 +180,191 @@ class AppConfig:
     api_port: int
     cors_allow_origins: List[str]
     signalhub_api_base_url: str
+    signalhub_refresh_sec: int
+    signalhub_track_window_min: int
 
 
-def load_config(path: str) -> AppConfig:
+def parse_csv_list(raw: Any) -> List[str]:
+    if raw is None:
+        return []
+    if isinstance(raw, list):
+        return [str(x).strip() for x in raw if str(x).strip()]
+    return [x.strip() for x in str(raw).split(",") if x.strip()]
+
+
+def load_env_file(path: Path) -> Dict[str, str]:
+    env: Dict[str, str] = {}
     with open(path, "r", encoding="utf-8") as f:
-        raw = json.load(f)
+        for line in f:
+            text = line.strip()
+            if not text or text.startswith("#"):
+                continue
+            if text.startswith("export "):
+                text = text[7:].lstrip()
+            if "=" not in text:
+                continue
+            key, value = text.split("=", 1)
+            key = key.strip()
+            value = value.strip()
+            if not key:
+                continue
+            if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+                value = value[1:-1]
+            env[key] = value
+    return env
 
+
+def resolve_local_path(raw: Any, base_dir: Path) -> str:
+    value = str(raw or "").strip()
+    if not value:
+        return value
+    if "://" in value:
+        return value
+    p = Path(value).expanduser()
+    if p.is_absolute():
+        return str(p)
+    return str((base_dir / p).resolve())
+
+
+def load_raw_config_from_env(path: Path) -> Dict[str, Any]:
+    env = load_env_file(path)
+    base_dir = path.parent
+
+    def env_get(name: str, default: Any = None, aliases: Tuple[str, ...] = ()) -> Any:
+        for key in (name, *aliases):
+            if key in env:
+                return env[key]
+        return default
+
+    launch_configs_raw = str(
+        env_get("VLH_LAUNCH_CONFIGS_JSON", "", aliases=("LAUNCH_CONFIGS_JSON",))
+    ).strip()
+    if not launch_configs_raw:
+        raise ValueError("VLH_LAUNCH_CONFIGS_JSON is required in .env")
+    try:
+        launch_configs = json.loads(launch_configs_raw)
+    except json.JSONDecodeError as e:
+        raise ValueError(f"VLH_LAUNCH_CONFIGS_JSON is not valid JSON: {e}") from e
+    if not isinstance(launch_configs, list):
+        raise ValueError("VLH_LAUNCH_CONFIGS_JSON must be a JSON array")
+
+    return {
+        "CHAIN_ID": env_get("VLH_CHAIN_ID", "8453", aliases=("CHAIN_ID",)),
+        "WS_RPC_URL": env_get("VLH_WS_RPC_URL", aliases=("WS_RPC_URL",)),
+        "HTTP_RPC_URL": env_get("VLH_HTTP_RPC_URL", aliases=("HTTP_RPC_URL",)),
+        "BACKFILL_HTTP_RPC_URL": env_get(
+            "VLH_BACKFILL_HTTP_RPC_URL",
+            "",
+            aliases=("BACKFILL_HTTP_RPC_URL",),
+        ),
+        "VIRTUAL_TOKEN_ADDR": env_get(
+            "VLH_VIRTUAL_TOKEN_ADDR",
+            aliases=("VIRTUAL_TOKEN_ADDR",),
+        ),
+        "FEE_RATE_DEFAULT": env_get(
+            "VLH_FEE_RATE_DEFAULT",
+            "0.01",
+            aliases=("FEE_RATE_DEFAULT",),
+        ),
+        "TOTAL_SUPPLY_DEFAULT": env_get(
+            "VLH_TOTAL_SUPPLY_DEFAULT",
+            "1000000000",
+            aliases=("TOTAL_SUPPLY_DEFAULT",),
+        ),
+        "LAUNCH_CONFIGS": launch_configs,
+        "MY_WALLETS": parse_csv_list(env_get("VLH_MY_WALLETS", "", aliases=("MY_WALLETS",))),
+        "TOP_N": env_get("VLH_TOP_N", "50", aliases=("TOP_N",)),
+        "CONFIRMATIONS": env_get("VLH_CONFIRMATIONS", "1", aliases=("CONFIRMATIONS",)),
+        "AGG_MINUTE_WINDOW": env_get(
+            "VLH_AGG_MINUTE_WINDOW",
+            "0",
+            aliases=("AGG_MINUTE_WINDOW",),
+        ),
+        "PRICE_MODE": env_get("VLH_PRICE_MODE", "onchain_pool", aliases=("PRICE_MODE",)),
+        "VIRTUAL_USDC_PAIR_ADDR": env_get(
+            "VLH_VIRTUAL_USDC_PAIR_ADDR",
+            "",
+            aliases=("VIRTUAL_USDC_PAIR_ADDR",),
+        ),
+        "PRICE_REFRESH_SEC": env_get(
+            "VLH_PRICE_REFRESH_SEC",
+            "3",
+            aliases=("PRICE_REFRESH_SEC",),
+        ),
+        "DB_MODE": env_get("VLH_DB_MODE", "sqlite", aliases=("DB_MODE",)),
+        "SQLITE_PATH": resolve_local_path(
+            env_get("VLH_SQLITE_PATH", "./001-Virtuals-Launch-Hunter/data/virtuals_v11.db", aliases=("SQLITE_PATH",)),
+            base_dir,
+        ),
+        "DB_BATCH_SIZE": env_get("VLH_DB_BATCH_SIZE", "200", aliases=("DB_BATCH_SIZE",)),
+        "DB_FLUSH_MS": env_get("VLH_DB_FLUSH_MS", "500", aliases=("DB_FLUSH_MS",)),
+        "RECEIPT_WORKERS": env_get(
+            "VLH_RECEIPT_WORKERS",
+            "8",
+            aliases=("RECEIPT_WORKERS",),
+        ),
+        "RECEIPT_WORKERS_REALTIME": env_get(
+            "VLH_RECEIPT_WORKERS_REALTIME",
+            env_get("VLH_RECEIPT_WORKERS", "8", aliases=("RECEIPT_WORKERS",)),
+            aliases=("RECEIPT_WORKERS_REALTIME",),
+        ),
+        "RECEIPT_WORKERS_BACKFILL": env_get(
+            "VLH_RECEIPT_WORKERS_BACKFILL",
+            env_get("VLH_RECEIPT_WORKERS", "8", aliases=("RECEIPT_WORKERS",)),
+            aliases=("RECEIPT_WORKERS_BACKFILL",),
+        ),
+        "MAX_RPC_RETRIES": env_get(
+            "VLH_MAX_RPC_RETRIES",
+            "5",
+            aliases=("MAX_RPC_RETRIES",),
+        ),
+        "BACKFILL_CHUNK_BLOCKS": env_get(
+            "VLH_BACKFILL_CHUNK_BLOCKS",
+            "20",
+            aliases=("BACKFILL_CHUNK_BLOCKS",),
+        ),
+        "BACKFILL_INTERVAL_SEC": env_get(
+            "VLH_BACKFILL_INTERVAL_SEC",
+            "8",
+            aliases=("BACKFILL_INTERVAL_SEC",),
+        ),
+        "LOG_LEVEL": env_get("VLH_LOG_LEVEL", "info", aliases=("LOG_LEVEL",)),
+        "JSONL_PATH": resolve_local_path(
+            env_get("VLH_JSONL_PATH", "./001-Virtuals-Launch-Hunter/data/events.jsonl", aliases=("JSONL_PATH",)),
+            base_dir,
+        ),
+        "EVENT_BUS_SQLITE_PATH": resolve_local_path(
+            env_get(
+                "VLH_EVENT_BUS_SQLITE_PATH",
+                "./001-Virtuals-Launch-Hunter/data/virtuals_bus.db",
+                aliases=("EVENT_BUS_SQLITE_PATH",),
+            ),
+            base_dir,
+        ),
+        "API_HOST": env_get("VLH_API_HOST", "127.0.0.1", aliases=("API_HOST",)),
+        "API_PORT": env_get("VLH_API_PORT", "8080", aliases=("API_PORT",)),
+        "CORS_ALLOW_ORIGINS": parse_csv_list(
+            env_get("VLH_CORS_ALLOW_ORIGINS", "", aliases=("CORS_ALLOW_ORIGINS",))
+        ),
+        "SIGNALHUB_API_BASE_URL": env_get(
+            "VLH_SIGNALHUB_API_BASE_URL",
+            "http://127.0.0.1:8000",
+            aliases=("SIGNALHUB_API_BASE_URL",),
+        ),
+        "SIGNALHUB_REFRESH_SEC": env_get(
+            "VLH_SIGNALHUB_REFRESH_SEC",
+            "5",
+            aliases=("SIGNALHUB_REFRESH_SEC",),
+        ),
+        "SIGNALHUB_TRACK_WINDOW_MIN": env_get(
+            "VLH_SIGNALHUB_TRACK_WINDOW_MIN",
+            "105",
+            aliases=("SIGNALHUB_TRACK_WINDOW_MIN",),
+        ),
+    }
+
+
+def build_app_config(raw: Dict[str, Any]) -> AppConfig:
     forbidden_keys = {"SUPABASE_URL", "SUPABASE_KEY"}
     found_forbidden = forbidden_keys.intersection(set(raw.keys()))
     if found_forbidden:
@@ -266,6 +448,8 @@ def load_config(path: str) -> AppConfig:
         .strip()
         .rstrip("/")
     )
+    signalhub_refresh_sec = max(1, int(raw.get("SIGNALHUB_REFRESH_SEC", 5)))
+    signalhub_track_window_min = max(1, int(raw.get("SIGNALHUB_TRACK_WINDOW_MIN", 105)))
 
     return AppConfig(
         chain_id=chain_id,
@@ -300,7 +484,39 @@ def load_config(path: str) -> AppConfig:
         api_port=int(raw.get("API_PORT", 8080)),
         cors_allow_origins=cors_allow_origins,
         signalhub_api_base_url=signalhub_api_base_url,
+        signalhub_refresh_sec=signalhub_refresh_sec,
+        signalhub_track_window_min=signalhub_track_window_min,
     )
+
+
+def load_config(path: str) -> AppConfig:
+    requested = Path(path).expanduser()
+    env_override = os.getenv("WORKSPACE_ENV_PATH", "").strip()
+    fallback_env = Path(env_override).expanduser() if env_override else DEFAULT_ENV_PATH
+
+    candidate_paths: List[Path] = []
+    if requested.is_absolute():
+        candidate_paths.append(requested)
+    else:
+        candidate_paths.append((Path.cwd() / requested).resolve())
+        candidate_paths.append((Path(__file__).resolve().parent / requested).resolve())
+    candidate_paths.append(fallback_env.resolve())
+
+    source_path: Optional[Path] = None
+    for candidate in candidate_paths:
+        if candidate.is_file():
+            source_path = candidate
+            break
+
+    if source_path is None:
+        raise FileNotFoundError(f"config file not found: {path}")
+
+    if source_path.name.lower().endswith(".env"):
+        raw = load_raw_config_from_env(source_path)
+    else:
+        with open(source_path, "r", encoding="utf-8") as f:
+            raw = json.load(f)
+    return build_app_config(raw)
 
 
 class RPCClient:
@@ -3354,6 +3570,10 @@ class VirtualsBot:
                     "runtime_ui_online": runtime_data["runtimeUiOnline"],
                     "runtime_ui_last_seen_at": runtime_data["runtimeUiLastSeenAt"],
                     "runtime_ui_heartbeat_timeout_sec": runtime_data["runtimeUiHeartbeatTimeoutSec"],
+                },
+                "signalHubFeed": {
+                    "refresh_sec": int(self.cfg.signalhub_refresh_sec),
+                    "track_window_min": int(self.cfg.signalhub_track_window_min),
                 },
             }
         )
